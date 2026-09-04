@@ -858,6 +858,28 @@ label.ruas{display:block;margin-bottom:11px}
 label.ruas>span.nama{display:block;font-size:.76rem;font-weight:700;margin-bottom:4px}
 label.ruas>span.bantu{display:block;font-size:.7rem;color:var(--redup);margin-top:4px}
 
+/* Tombol kosongkan (x) di dalam kotak isian. Ukuran 30px dipilih agar
+   tetap mudah ditekan dengan ibu jari tanpa menutupi teks yang diketik. */
+span.kotakIsian{position:relative;display:block}
+span.kotakIsian>input{padding-right:38px}
+span.kotakIsian>button.kosongkan{
+  position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;padding:0;border:0;border-radius:50%;
+  background:var(--garis);color:var(--redup);font-size:1.05rem;line-height:1;
+  cursor:pointer;display:none;align-items:center;justify-content:center;
+}
+span.kotakIsian>button.kosongkan:hover{background:var(--bahaya);color:#fff}
+span.kotakIsian.terisi>button.kosongkan{display:flex}
+/* Panah pengatur angka bawaan peramban disembunyikan: ia berhimpitan
+   dengan tombol silang, dan di ponsel terlalu kecil untuk ditekan
+   dengan tepat. Angka tetap bisa diketik seperti biasa. */
+span.kotakIsian>input[type=number]{-moz-appearance:textfield;appearance:textfield}
+span.kotakIsian>input[type=number]::-webkit-outer-spin-button,
+span.kotakIsian>input[type=number]::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0}
+html[data-mode="silau"] span.kotakIsian>button.kosongkan{
+  background:var(--tinta);color:var(--latar)}
+
 table{width:100%;border-collapse:collapse;font-size:.82rem}
 th,td{padding:8px 6px;text-align:left;border-bottom:1px solid var(--garis);
   vertical-align:top}
@@ -1597,6 +1619,8 @@ function demoJalankan(aksi, d) {
         komoditas: db.komoditas, pengguna: db.pengguna,
         pengaturan: db.pengaturan, pengguna_aktif: S.pengguna,
         lisensi: demoLisensi(),
+        versiPeladen: VERSI_KLIEN,
+        tanggalRilis: TANGGAL_RILIS_KLIEN,
         database: { id: 'DEMO-TIDAK-ADA-DATABASE', nama: 'Demo (data di peramban)' }
       };
 
@@ -1614,6 +1638,13 @@ function demoJalankan(aksi, d) {
         var ps = demoPusat(p.koordinat);
         p.pusatLat = ps[0]; p.pusatLng = ps[1];
       }
+      /* Ruas gaya disaring dengan aturan yang sama seperti peladen.
+         Demo yang lebih longgar berbahaya: ia membuat cacat di peladen
+         tidak terlihat sampai pelanggan yang menemukannya. */
+      p.warnaGaris = demoWarnaHeks(p.warnaGaris);
+      p.warnaIsi = demoWarnaHeks(p.warnaIsi);
+      p.tebalGaris = demoJepit(p.tebalGaris, 1, 12);
+      p.opasitasIsi = demoJepit(p.opasitasIsi, 0, 1);
       return demoSimpan(db.petak, p, 'PTK');
     }
     case 'petak_hapus': {
@@ -1775,6 +1806,18 @@ function demoJalankan(aksi, d) {
                teksPesan: bl.judul + '\n\n' + bl.pesan };
     }
 
+    /* --- laporan: dihitung dari salinan lokal yang sama --- */
+    case 'laporan_bulanan':
+      return laporanBulananLokal(demoAngka(d.tahun) || new Date().getFullYear(),
+                                 demoAngka(d.bulan) || (new Date().getMonth() + 1));
+    case 'laporan_tahunan':
+      return laporanTahunanLokal(demoAngka(d.tahun) || new Date().getFullYear());
+    case 'laporan_tahun_tersedia':
+      return { tahun: tahunTersediaLokal() };
+    case 'laporan_csv':
+      throw new Error('Ekspor CSV peladen tidak tersedia pada versi demo — ' +
+                      'aplikasi akan menyusunnya dari salinan lokal.');
+
     /* --- analitik --- */
     case 'laba_rugi': return demoLabaRugi(db, d);
     case 'prediksi_panen': return { prediksi: [], catatan: 'Dihitung di klien.' };
@@ -1887,9 +1930,21 @@ function demoJalankan(aksi, d) {
     case 'sync_batch': return { hasil: [] };
     case 'database_info':
       return { id: 'DEMO-TIDAK-ADA-DATABASE', nama: 'Demo (data di peramban)' };
-    case 'info': return { versi: '1.3.0-demo', demo: true };
+    case 'info': return { versi: VERSI_KLIEN + '-demo', demo: true };
   }
   throw new Error('Aksi "' + aksi + '" tidak tersedia pada versi demo.');
+}
+
+function demoWarnaHeks(v) {
+  var t = String(v === null || v === undefined ? '' : v).trim();
+  return /^#[0-9a-fA-F]{6}$/.test(t) ? t : '';
+}
+
+function demoJepit(v, min, maks) {
+  if (v === '' || v === null || v === undefined) return '';
+  var n = Number(v);
+  if (isNaN(n)) return '';
+  return Math.min(maks, Math.max(min, n));
 }
 
 function demoAngka(v) {
@@ -2332,6 +2387,10 @@ function demoUlangData() {
       });
     }, 'Kembalikan', true);
 }
+
+/* Versi antarmuka. HARUS naik bersama APP_VERSI di Code.gs. */
+var VERSI_KLIEN = '1.6.0';
+var TANGGAL_RILIS_KLIEN = '2026-09-04';
 
 /* ============================================================
    TaniPintar — inti aplikasi
@@ -2782,6 +2841,8 @@ function muatData(diam) {
     S.pengaturan = d.pengaturan || {};
     S.lisensi = d.lisensi || null;
     S.database = d.database || {};
+    S.versiPeladen = d.versiPeladen || '';
+    S.tanggalRilis = d.tanggalRilis || '';
     S.siap = true;
     simpanLokal(LS.data, S.data);
     simpanLokal('tanipintar_pengaturan', S.pengaturan);
@@ -2899,8 +2960,15 @@ function bolehAdminUbah() {
 
 var _modalCallback = null;
 
+/* Benar bila satu langkah riwayat sedang menahan modal yang terbuka. */
+var _modalDiRiwayat = false;
+
 function modalBuka(judul, isiHtml, callback, labelTombol) {
-  modalTutup();
+  /* Modal lama ditutup langsung, bukan lewat riwayat. Modal yang membuka
+     modal lain (mis. Detail lalu Ubah) tidak boleh mendorong dua langkah —
+     kalau begitu, satu tekan Kembali hanya akan membuka kembali modal
+     sebelumnya, bukan kembali ke daftar. */
+  tutupModalDom();
   var tirai = document.createElement('div');
   tirai.className = 'tirai';
   tirai.id = 'tirai';
@@ -2911,21 +2979,70 @@ function modalBuka(judul, isiHtml, callback, labelTombol) {
       '<div id="modalIsi">' + isiHtml + '</div>' +
       (callback ? '<div class="baris" style="margin-top:14px">' +
         '<button type="button" class="tbl sekunder" onclick="modalTutup()">Batal</button>' +
-        '<button type="button" class="tbl kanan" id="modalSimpan">' +
+        '<button type="button" class="tbl kanan" id="modalSimpan" ' +
+        'title="Enter untuk menyimpan (Ctrl+Enter dari kotak catatan)">' +
         esc(labelTombol || 'Simpan') + '</button></div>' : '') +
     '</div>';
   tirai.onclick = function () { modalTutup(); };
   document.body.appendChild(tirai);
   _modalCallback = callback || null;
   if (callback) $('modalSimpan').onclick = modalKirim;
+
+  if (!_modalDiRiwayat) {
+    try {
+      history.pushState({ tp: 'modal' }, '', location.hash || '');
+      _modalDiRiwayat = true;
+    } catch (e) { /* riwayat tidak tersedia — modal tetap berfungsi */ }
+  }
   var pertama = tirai.querySelector('input,select,textarea');
   if (pertama && window.innerWidth > 700) setTimeout(function () { pertama.focus(); }, 60);
 }
 
-function modalTutup() {
+/** Menutup modal secara nyata di DOM. Tidak menyentuh riwayat peramban. */
+function tutupModalDom() {
   var t = $('tirai');
   if (t) t.parentNode.removeChild(t);
   _modalCallback = null;
+}
+
+/**
+ * Menutup modal lewat riwayat peramban, bukan langsung.
+ *
+ * Alasannya: saat modal dibuka, satu langkah riwayat ikut didorong supaya
+ * tombol Kembali di ponsel menutup modal alih-alih keluar dari aplikasi.
+ * Bila modal ditutup langsung tanpa menarik langkah itu kembali, riwayat
+ * akan menumpuk dan pengguna harus menekan Kembali berkali-kali sebelum
+ * benar-benar berpindah.
+ */
+/* Tindakan yang menunggu langkah riwayat modal selesai ditarik. */
+var _lanjutSetelahRiwayat = null;
+
+function modalTutup() {
+  modalTutupLalu(null);
+}
+
+/**
+ * Menutup modal, lalu menjalankan `lanjut` setelah langkah riwayatnya
+ * benar-benar tertarik.
+ *
+ * history.back() berjalan asinkron. Bila tindakan berikutnya — berpindah
+ * tab, membuka modal lain — dijalankan langsung sesudahnya, popstate yang
+ * menyusul akan mengenai keadaan yang salah: tab yang baru dibuka ikut
+ * tertutup. Karena itu tindakan lanjutan dititipkan ke penangan popstate.
+ */
+function modalTutupLalu(lanjut) {
+  if (!$('tirai')) {
+    if (lanjut) lanjut();
+    return;
+  }
+  if (_modalDiRiwayat) {
+    _modalDiRiwayat = false;
+    _lanjutSetelahRiwayat = lanjut || null;
+    tutupModalDom();
+    try { history.back(); return; } catch (e) { _lanjutSetelahRiwayat = null; }
+  }
+  tutupModalDom();
+  if (lanjut) lanjut();
 }
 
 /**
@@ -2999,7 +3116,11 @@ function bentukRuas(daftar, nilaiAwal) {
       }
       html += '</select>';
     } else if (f.t === 'area') {
-      html += '<textarea id="' + id + '" rows="' + (f.baris || 3) + '" placeholder="' +
+      /* Pada textarea, Enter tetap berarti baris baru — catatan lapangan
+         sering butuh beberapa baris. Untuk menyimpan dari sini dipakai
+         Ctrl+Enter, dan enterkeyhint dibiarkan "enter". */
+      html += '<textarea id="' + id + '" rows="' + (f.baris || 3) + '" ' +
+              'enterkeyhint="enter" placeholder="' +
               esc(f.contoh || '') + '">' + esc(v) + '</textarea>';
     } else if (f.t === 'centang') {
       html += '<span class="baris"><input type="checkbox" id="' + id + '" ' +
@@ -3032,15 +3153,150 @@ function bentukRuas(daftar, nilaiAwal) {
         '</div>';
     } else {
       var tipe = f.t === 'angka' ? 'number' : (f.t === 'tanggal' ? 'date' : 'text');
-      html += '<input type="' + tipe + '" id="' + id + '" value="' + esc(v) + '"' +
+      /* enterkeyhint mengubah tulisan tombol pada papan ketik ponsel dari
+         "return" menjadi "go". Tanpa itu, pengguna tidak punya petunjuk
+         bahwa menekannya akan menyimpan. */
+      var kotak = '<input type="' + tipe + '" id="' + id + '" value="' + esc(v) + '"' +
+        ' enterkeyhint="go"' +
         (f.t === 'angka' ? ' step="' + (f.langkah || 'any') + '" inputmode="decimal"' : '') +
         (f.contoh ? ' placeholder="' + esc(f.contoh) + '"' : '') +
         (f.onchange ? ' oninput="' + f.onchange + '"' : '') + '>';
+      /* Kotak tanggal punya tombol bawaan peramban sendiri; menambah
+         tombol kedua di atasnya justru menutupi ikon kalender. */
+      html += (f.t === 'tanggal') ? kotak : bungkusKosongkan(kotak, v);
     }
     if (f.help) html += '<span class="bantu" id="f_help_' + f.k + '">' + f.help + '</span>';
     html += '</label>';
   }
   return html;
+}
+
+/**
+ * Apakah kejadian papan ketik ini berarti "kirim"?
+ *
+ * Di ponsel, tombol Go/Enter/Selesai tidak selalu mengirim key 'Enter':
+ * sebagian papan ketik Android mengirim keyCode 13 tanpa key, sebagian
+ * lagi memicu keydown 'Unidentified' dengan keyCode 229 saat teks masih
+ * dalam proses penyusunan (composition). Yang terakhir HARUS diabaikan,
+ * kalau tidak formulir akan terkirim di tengah pengetikan kata.
+ */
+/**
+ * Modal dianggap terbuka hanya bila ada tombol simpan di dalamnya.
+ * Modal yang sekadar menampilkan keterangan tidak punya apa pun untuk
+ * dikirim, dan Enter di sana tidak boleh melakukan apa-apa.
+ */
+function modalTerbuka() {
+  return !!($('tirai') && $('modalSimpan'));
+}
+
+function tekanEnter(e) {
+  if (!e) return false;
+  if (e.isComposing || e.keyCode === 229) return false;
+  return e.key === 'Enter' || e.keyCode === 13;
+}
+
+/** Enter pada satu ruas memindahkan sorotan ke ruas berikutnya. */
+function enterKeRuas(e, idBerikut) {
+  if (!tekanEnter(e)) return;
+  e.preventDefault();
+  var el = $(idBerikut);
+  if (el) el.focus();
+}
+
+/**
+ * Penanganan Enter yang berlaku menyeluruh, dipasang sekali di mulai().
+ * Ditulis di satu tempat supaya setiap formulir baru ikut berperilaku
+ * sama tanpa perlu ditambal satu per satu.
+ */
+function pasangEnterMenyeluruh() {
+  document.addEventListener('keydown', function (e) {
+    if (!tekanEnter(e)) return;
+    var t = e.target;
+    if (!t) return;
+    var tag = String(t.tagName || '').toUpperCase();
+
+    // Tombol dan tautan sudah menangani Enter sendiri.
+    if (tag === 'BUTTON' || tag === 'A') return;
+
+    // Textarea: Enter = baris baru. Ctrl+Enter atau Cmd+Enter = kirim.
+    if (tag === 'TEXTAREA') {
+      if ((e.ctrlKey || e.metaKey) && modalTerbuka()) {
+        e.preventDefault();
+        modalKirim();
+      }
+      return;
+    }
+
+    if (tag !== 'INPUT' && tag !== 'SELECT') return;
+    if (t.type === 'checkbox' || t.type === 'radio' || t.type === 'button') return;
+
+    if (modalTerbuka()) {
+      e.preventDefault();
+      // Papan ketik ponsel ditutup lebih dulu; bila modal tetap terbuka
+      // karena penyimpanan ditolak, ruas yang salah masih terlihat.
+      if (t.blur) t.blur();
+      modalKirim();
+      return;
+    }
+
+    /* Di luar modal, Enter berarti "selesai mengetik": papan ketik ponsel
+       ditutup dan perubahan diterapkan. Ini penting pada kotak pencarian
+       dan penyaringan, yang tanpa ini tidak punya cara untuk ditutup
+       selain menekan area kosong. */
+    e.preventDefault();
+    if (t.blur) t.blur();
+    if (typeof t.onchange === 'function') t.onchange();
+  });
+}
+
+/**
+ * Membungkus sebuah kotak isian dengan tombol silang untuk mengosongkannya.
+ *
+ * Memperbaiki salah ketik di ponsel biasanya berarti menahan tombol hapus
+ * belasan kali, atau menyorot seluruh teks dengan tepat — dua-duanya
+ * menyusahkan dengan tangan berlumpur di kebun.
+ */
+function bungkusKosongkan(htmlInput, nilai) {
+  var terisi = String(nilai === null || nilai === undefined ? '' : nilai) !== '';
+  return '<span class="kotakIsian' + (terisi ? ' terisi' : '') + '">' + htmlInput +
+    '<button type="button" class="kosongkan" tabindex="-1" aria-label="Kosongkan isian" ' +
+    'onclick="kosongkanIsian(this)">&times;</button></span>';
+}
+
+function kosongkanIsian(tombol) {
+  var bungkus = tombol.parentNode;
+  var el = bungkus.querySelector('input');
+  if (!el) return;
+  el.value = '';
+  bungkus.classList.remove('terisi');
+  /* Kejadian input dibangkitkan sendiri supaya penanganan oninput yang
+     menempel pada ruas — misalnya perhitungan total panen — ikut berjalan.
+     Tanpa ini, total akan tetap menampilkan angka dari nilai yang sudah
+     dihapus. */
+  try {
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (e) {
+    if (typeof el.oninput === 'function') el.oninput();
+  }
+  el.focus();
+}
+
+/**
+ * Menampilkan atau menyembunyikan tombol silang mengikuti isi kotak.
+ * Dipasang sekali sebagai penangan menyeluruh, bukan per ruas, supaya
+ * setiap kotak isian baru ikut berperilaku sama tanpa perlu diingat.
+ */
+function pasangKosongkanMenyeluruh() {
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || String(el.tagName).toUpperCase() !== 'INPUT') return;
+    var bungkus = el.parentNode;
+    if (!bungkus || !bungkus.classList ||
+        !bungkus.classList.contains('kotakIsian')) return;
+    if (String(el.value) === '') bungkus.classList.remove('terisi');
+    else bungkus.classList.add('terisi');
+  });
 }
 
 function setWarnaRuas(kunci, nilai) {
@@ -3166,8 +3422,10 @@ var TAB = [
   { k: 'tanibot', n: 'TaniBot', ik: '🤖' },
   { k: 'edukasi', n: 'Edukasi', ik: '📚' },
   { k: 'analisis', n: 'Analisis', ik: '📈' },
+  { k: 'laporan', n: 'Laporan', ik: '📊' },
   { k: 'penyuluh', n: 'Penyuluh', ik: '🛡️', peran: 'penyuluh' },
-  { k: 'setelan', n: 'Setelan', ik: '⚙️' }
+  { k: 'setelan', n: 'Setelan', ik: '⚙️' },
+  { k: 'tentang', n: 'Tentang', ik: 'ℹ️' }
 ];
 
 function bangunNav() {
@@ -3182,19 +3440,99 @@ function bangunNav() {
   $('nav').innerHTML = html;
 }
 
-function pindah(tab) {
+function pindah(tab, dariRiwayat) {
   if (S.tab === tab) return;
   bersihkanPeta();
   S.tab = tab;
-  try { history.replaceState(null, '', '#' + tab); } catch (e) {}
+  if (!dariRiwayat) dorongRiwayat();
   render();
   window.scrollTo(0, 0);
 }
 
-function subPindah(kelompok, nilai) {
+function subPindah(kelompok, nilai, dariRiwayat) {
+  if (S.subtab[kelompok] === nilai) return;
   S.subtab[kelompok] = nilai;
   bersihkanPeta();
+  // Sub-tab ikut masuk riwayat: berpindah dari Peta Pokok kembali ke
+  // Ringkasan terasa seperti "mundur satu langkah" bagi pengguna, dan
+  // tombol Kembali seharusnya menuruti anggapan itu.
+  if (!dariRiwayat) dorongRiwayat();
   render();
+}
+
+/* ============================================================
+   RIWAYAT & TOMBOL KEMBALI PONSEL
+   ============================================================
+   Tanpa ini, menekan Kembali di Android langsung menutup aplikasi —
+   termasuk saat sebuah formulir sedang terbuka. Pengguna yang salah
+   tekan kehilangan seluruh ketikannya tanpa peringatan.
+   ============================================================ */
+
+function keadaanTampilan() {
+  var sub = {};
+  for (var k in S.subtab) sub[k] = S.subtab[k];
+  return { tp: 'tampilan', tab: S.tab, sub: sub, pokokPetak: S.pokokPetak || '' };
+}
+
+function dorongRiwayat() {
+  try {
+    history.pushState(keadaanTampilan(), '', '#' + S.tab);
+  } catch (e) { /* peramban lama — navigasi tetap berjalan tanpa riwayat */ }
+}
+
+function gantiRiwayat() {
+  try {
+    history.replaceState(keadaanTampilan(), '', '#' + S.tab);
+  } catch (e) { /* diabaikan */ }
+}
+
+/**
+ * Menangani tombol Kembali. Urutan pemeriksaannya penting: modal harus
+ * ditutup lebih dulu sebelum tab dipindahkan, kalau tidak pengguna akan
+ * melihat tab berganti sementara formulirnya masih menutupi layar.
+ */
+function pasangTombolKembali() {
+  window.addEventListener('popstate', function (e) {
+    /* Langkah ini ditarik oleh modalTutupLalu(), bukan oleh pengguna.
+       Modal sudah tertutup; yang tersisa hanya menjalankan titipannya. */
+    if (_lanjutSetelahRiwayat) {
+      var lanjut = _lanjutSetelahRiwayat;
+      _lanjutSetelahRiwayat = null;
+      lanjut();
+      return;
+    }
+
+    if ($('tirai')) {
+      _modalDiRiwayat = false;
+      tutupModalDom();
+      return;
+    }
+    _modalDiRiwayat = false;
+
+    var st = e.state;
+    if (st && st.tp === 'tampilan') {
+      /* Sub-tab DIGANTI seluruhnya, bukan digabung. Menggabungkan hanya
+         menambah kunci dan tidak pernah menghapusnya, sehingga kembali ke
+         keadaan sebelum sebuah sub-tab pernah dibuka tidak akan pernah
+         berhasil — sub-tab terakhir tetap menempel. */
+      S.subtab = {};
+      if (st.sub) {
+        for (var k in st.sub) S.subtab[k] = st.sub[k];
+      }
+      if (st.pokokPetak !== undefined) S.pokokPetak = st.pokokPetak;
+      if (st.tab && st.tab !== S.tab) {
+        bersihkanPeta();
+        S.tab = st.tab;
+      }
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    /* Tidak ada keadaan tersimpan: pengguna sudah di langkah paling awal.
+       Aplikasi dibiarkan tertutup — menahannya di sini akan membuat
+       aplikasi mustahil ditinggalkan lewat tombol Kembali. */
+  });
 }
 
 function pil(kelompok, daftar, bawaan) {
@@ -3250,7 +3588,9 @@ function render() {
     case 'edukasi': html += tabEdukasi(); break;
     case 'analisis': html += tabAnalisis(); break;
     case 'penyuluh': html += bolehKelola() ? tabPenyuluh() : '<p>Tidak berwenang.</p>'; break;
+    case 'laporan': html += tabLaporan(); break;
     case 'setelan': html += tabSetelan(); break;
+    case 'tentang': html += tabTentang(); break;
     default: html += tabDasbor();
   }
   el.innerHTML = html;
@@ -3291,6 +3631,20 @@ function spandukDemo() {
 
 function spandukStatus() {
   var html = spandukDemo();
+
+  /* Peringatan beda versi tampil di SETIAP tab, bukan hanya di halaman
+     Tentang. Keadaan ini membuat sebagian fitur berhenti bekerja tanpa
+     pesan galat apa pun — pengguna yang tidak pernah membuka Tentang
+     tidak akan pernah tahu sebabnya. */
+  if (S.versiPeladen && S.versiPeladen !== VERSI_KLIEN) {
+    html += '<div class="spanduk merah takCetak"><span>⚠️</span><span>' +
+      '<b>Versi antarmuka dan peladen berbeda — v' + esc(VERSI_KLIEN) +
+      ' vs v' + esc(S.versiPeladen) + '</b>' +
+      'Sebagian fitur dapat berhenti bekerja tanpa pesan galat. Salin ulang seluruh ' +
+      'berkas dari paket yang sama, lalu terapkan ulang Web App.' +
+      '<button class="tbl kecil bahaya" style="margin-top:6px" ' +
+      'onclick="pindah(\'tentang\')">Lihat rinciannya</button></span></div>';
+  }
 
   if (!S.daring) {
     html += '<div class="spanduk kuning"><span>📴</span><span><b>Mode luring</b>' +
@@ -3342,13 +3696,27 @@ function layarMasuk() {
       esc(S.pengaturan.subJudul || 'WebGIS & Manajemen Kebun Petani') + '</small>' +
     '</div>' +
     '<label class="ruas"><span class="nama">Email</span>' +
-      '<input type="email" id="masukEmail" autocomplete="username" inputmode="email" ' +
-      'placeholder="nama@contoh.id" value="' + esc(bacaLokal('tanipintar_email_terakhir', '')) +
-      '"></label>' +
+      bungkusKosongkan(
+        '<input type="email" id="masukEmail" autocomplete="username" inputmode="email" ' +
+        'enterkeyhint="next" onkeydown="enterKeRuas(event, \'masukPin\')" ' +
+        'placeholder="nama@contoh.id" value="' +
+        esc(bacaLokal('tanipintar_email_terakhir', '')) + '">',
+        bacaLokal('tanipintar_email_terakhir', '')) + '</label>' +
     '<label class="ruas"><span class="nama">PIN</span>' +
       '<input type="password" id="masukPin" inputmode="numeric" autocomplete="current-password" ' +
+      'enterkeyhint="go" onkeydown="if(tekanEnter(event))lakukanMasuk()" ' +
       'maxlength="8" placeholder="4-8 angka"></label>' +
     '<button class="tbl lebar" id="tblMasuk" onclick="lakukanMasuk()">Masuk</button>' +
+    /* Dokumen dapat dibaca SEBELUM masuk. Menaruhnya hanya di dalam
+       aplikasi berarti pengguna baru bisa membacanya setelah menyerahkan
+       surel dan PIN — persetujuan yang diberikan tanpa kesempatan
+       membaca lebih dulu tidak berarti apa pun. */
+    '<p style="font-size:.72rem;color:var(--redup);margin-top:10px;text-align:center;' +
+    'line-height:1.6">Dengan masuk, Anda menyetujui ' +
+    '<a href="#" onclick="bukaDokumenLegal(\'syarat\');return false">Syarat &amp; ' +
+    'Ketentuan</a> dan telah membaca ' +
+    '<a href="#" onclick="bukaDokumenLegal(\'privasi\');return false">Pemberitahuan ' +
+    'Privasi</a>.</p>' +
     ((typeof DEMO_AKTIF !== 'undefined' && DEMO_AKTIF)
       ? '<hr class="pisah"><p style="font-size:.78rem;font-weight:700;margin:0 0 6px">' +
         'Akun demo — PIN semuanya <b>1234</b></p>' +
@@ -3434,7 +3802,8 @@ function bukaProfil() {
     '<hr class="pisah">' +
     '<div class="tumpuk">' +
     '<button class="tbl sekunder lebar" onclick="formGantiPin()">Ganti PIN</button>' +
-    '<button class="tbl sekunder lebar" onclick="modalTutup();pindah(\'setelan\')">' +
+    '<button class="tbl sekunder lebar" ' +
+    'onclick="modalTutupLalu(function(){pindah(\'setelan\');})">' +
     'Setelan aplikasi</button>' +
     '<button class="tbl bahaya lebar" onclick="lakukanKeluar()">Keluar</button>' +
     '</div>' +
@@ -4317,9 +4686,9 @@ function detailPetak(id) {
   html += '<button class="tbl lebar" onclick="bukaPokok(\'' + jsq(id) +
     '\')">🌳 Kelola per pokok</button>';
   if (bolehUbah()) {
-    html += '<button class="tbl sekunder lebar" onclick="modalTutup();formPetak(\'' +
+    html += '<button class="tbl sekunder lebar" onclick="formPetak(\'' +
       jsq(id) + '\')">✏️ Ubah data petak</button>' +
-      '<button class="tbl sekunder lebar" onclick="modalTutup();formFotoTumbuh(\'' +
+      '<button class="tbl sekunder lebar" onclick="formFotoTumbuh(\'' +
       jsq(id) + '\')">📷 Tambah foto pertumbuhan</button>';
   }
   var wa = nomorWa(p.noHp);
@@ -5237,11 +5606,11 @@ function detailKerusakan(id) {
   if (bolehUbah()) {
     html += '<button class="tbl lebar" onclick="mintaDiagnosa(\'' + jsq(id) +
       '\')">🔬 Minta diagnosis</button>' +
-      '<button class="tbl sekunder lebar" onclick="modalTutup();formKerusakan(\'' + jsq(id) +
+      '<button class="tbl sekunder lebar" onclick="formKerusakan(\'' + jsq(id) +
       '\')">✏️ Ubah laporan</button>';
   }
   if (bolehKelola()) {
-    html += '<button class="tbl bahaya lebar" onclick="modalTutup();hapusUmum(' +
+    html += '<button class="tbl bahaya lebar" onclick="hapusUmum(' +
       '\'kerusakan_hapus\',\'' + jsq(id) + '\',\'laporan kerusakan\')">🗑️ Hapus</button>';
   }
   html += '</div>';
@@ -6068,9 +6437,9 @@ function bukaModul(id) {
 
   if (bolehKelola()) {
     html += '<hr class="pisah"><div class="tumpuk">' +
-      '<button class="tbl sekunder lebar" onclick="modalTutup();formEdukasi(\'' + jsq(id) +
+      '<button class="tbl sekunder lebar" onclick="formEdukasi(\'' + jsq(id) +
       '\')">\u270f\ufe0f Ubah modul</button>' +
-      '<button class="tbl bahaya lebar" onclick="modalTutup();hapusUmum(\'edukasi_hapus\',\'' +
+      '<button class="tbl bahaya lebar" onclick="hapusUmum(\'edukasi_hapus\',\'' +
       jsq(id) + '\',\'modul edukasi\')">\ud83d\uddd1\ufe0f Hapus</button></div>';
   }
   modalBuka('\ud83d\udcd6 ' + m.judul, html);
@@ -6593,20 +6962,15 @@ function bagianSetelanUmum() {
     '<button class="tbl sekunder lebar" onclick="formGantiPin()">🔑 Ganti PIN</button>' +
     '<button class="tbl bahaya lebar" onclick="lakukanKeluar()">Keluar</button></div></div>';
 
-  html += '<div class="kartu"><h3>ℹ️ Tentang</h3>' +
+  html += '<div class="kartu"><h3>ℹ️ Tentang aplikasi</h3>' +
     '<p style="font-size:.83rem;line-height:1.7">TaniPintar berjalan di atas Google Apps ' +
     'Script dan Google Spreadsheet milik Anda sendiri. Seluruh data — petak, panen, ' +
-    'keuangan, foto — tersimpan di berkas Spreadsheet Anda, bukan di peladen pihak ketiga. ' +
-    'Anda dapat membuka, mencadangkan, atau memindahkannya kapan saja.</p>' +
-    '<div class="kisi kisi2">' +
-    barisInfo('Versi', '1.0.0') +
-    barisInfo('Mode jalan', modeGas() ? 'Apps Script' : 'PWA (GitHub Pages)') +
-    barisInfo('ID Database', (S.database || {}).id || '-') +
-    barisInfo('Nama Database', (S.database || {}).nama || '-') + '</div>' +
-    '<p style="font-size:.75rem;color:var(--redup);margin-top:8px">Peta Leaflet ' +
-    '(BSD-2-Clause) tertanam di dalam aplikasi. Data cuaca dari Open-Meteo (CC-BY 4.0). ' +
-    'Aplikasi tidak menyertakan ubin peta pihak ketiga — Anda memakai kunci penyedia ' +
-    'sendiri, sehingga tidak ada ketentuan lisensi yang dilanggar.</p></div>';
+    'keuangan, foto — tersimpan di berkas Spreadsheet Anda, bukan di peladen pihak ' +
+    'ketiga.</p>' +
+    '<div class="tumpuk">' +
+    '<button class="tbl sekunder lebar" onclick="pindah(\'tentang\')">' +
+    'ℹ️ Versi, syarat &amp; ketentuan, privasi</button></div></div>';
+
   return html;
 }
 
@@ -6963,7 +7327,7 @@ function bagianSetelanData() {
 
 function unduhCadangan() {
   var isi = JSON.stringify({
-    aplikasi: 'TaniPintar', versi: '1.0.0', dibuat: new Date().toISOString(),
+    aplikasi: 'TaniPintar', versi: VERSI_KLIEN, dibuat: new Date().toISOString(),
     pengaturan: S.pengaturan, data: S.data
   }, null, 2);
   unduhBerkas('cadangan-tanipintar-' + hariIni() + '.json', isi, 'application/json');
@@ -7998,17 +8362,20 @@ function mulai() {
     render();
   });
 
-  window.addEventListener('hashchange', function () {
-    var h = String(location.hash || '').replace('#', '');
-    if (h && h.split('/')[0] !== S.tab) {
-      S.tab = h.split('/')[0];
-      render();
-    }
-  });
+  /* hashchange sengaja TIDAK dipasang: popstate sudah menangani semuanya,
+     dan memasang keduanya membuat satu tekan Kembali diproses dua kali. */
+  pasangTombolKembali();
+
+  /* Langkah riwayat pertama diganti, bukan didorong. Bila didorong, akan
+     ada satu langkah kosong di bawahnya — pengguna harus menekan Kembali
+     dua kali sebelum aplikasi benar-benar tertutup. */
+  gantiRiwayat();
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') modalTutup();
   });
+  pasangEnterMenyeluruh();
+  pasangKosongkanMenyeluruh();
 
   perbaruiTombolProfil();
   bangunNav();
@@ -8108,7 +8475,10 @@ function jarakLazim(namaKomoditas) {
 function bukaPokok(petakId) {
   var petak = petakById(petakId);
   if (!petak) return;
-  modalTutup();
+  modalTutupLalu(function () { lanjutBukaPokok(petakId); });
+}
+
+function lanjutBukaPokok(petakId) {
 
   if (!S.daring && _pokok.petakId !== petakId) {
     toast('Data pokok dimuat dari peladen dan belum tersedia luring untuk petak ini.',
@@ -8116,12 +8486,18 @@ function bukaPokok(petakId) {
     return;
   }
 
-  S.tab = 'pokok';
   S.pokokPetak = petakId;
   if (_pokok.petakId !== petakId) {
     _pokok = { petakId: petakId, daftar: [], catatan: [], ringkasan: null, dipilih: {} };
   }
-  render();
+  if (S.tab === 'pokok') {
+    // Sudah di tab Pokok, hanya petaknya yang berganti — riwayat tetap
+    // dicatat supaya Kembali mengembalikan pilihan petak sebelumnya.
+    dorongRiwayat();
+    render();
+  } else {
+    pindah('pokok');
+  }
   muatPokok(petakId);
 }
 
@@ -8220,8 +8596,10 @@ function tabPokok() {
 }
 
 function pilihPetakPokok(id) {
+  if (String(S.pokokPetak || '') === String(id)) return;
   S.pokokPetak = id;
   _pokok = { petakId: '', daftar: [], catatan: [], ringkasan: null, dipilih: {} };
+  dorongRiwayat();
   render();
   if (id) muatPokok(id);
 }
@@ -8418,8 +8796,11 @@ function bagianPokokDaftar(petak) {
     '</select></label>' +
     '<label class="ruas" style="flex:1;min-width:140px;margin:0">' +
     '<span class="nama">Cari kode</span>' +
-    '<input type="text" value="' + esc(S.filter.pokokCari || '') + '" ' +
-    'placeholder="mis. B02" oninput="S.filter.pokokCari=this.value;tundaRender()">' +
+    bungkusKosongkan(
+      '<input type="text" value="' + esc(S.filter.pokokCari || '') + '" ' +
+      'enterkeyhint="search" placeholder="mis. B02" ' +
+      'oninput="S.filter.pokokCari=this.value;tundaRender()">',
+      S.filter.pokokCari || '') +
     '</label></div></div>';
 
   html += '<div class="kartu"><div class="baris" style="margin-bottom:6px">' +
@@ -8651,7 +9032,7 @@ function detailPokok(id) {
       '\')">🔄 Ubah kondisi pokok</button>' +
       '<button class="tbl sekunder lebar" onclick="formCatatPokok(\'' + jsq(id) +
       '\',\'pengamatan\')">📝 Catat pengamatan</button>' +
-      '<button class="tbl sekunder lebar" onclick="modalTutup();formPokok(\'' +
+      '<button class="tbl sekunder lebar" onclick="formPokok(\'' +
       jsq(p.petakId) + '\',\'' + jsq(id) + '\')">✏️ Ubah data pokok</button>' +
       (bolehKelola()
         ? '<button class="tbl bahaya lebar" onclick="hapusPokok(\'' + jsq(id) +
@@ -9156,6 +9537,1321 @@ function unduhPokokGeojson() {
                 JSON.stringify(gj, null, 2), 'application/geo+json');
     toast(gj.features.length + ' titik pokok diekspor.', 'sukses');
   }).catch(function (e) { toast(e.message, 'galat'); });
+}
+
+
+/* ============================================================
+   TENTANG APLIKASI — versi, syarat & ketentuan, privasi
+   ============================================================
+   Isi hukum di berkas ini adalah SALINAN dari dokumen di folder
+   dokumen/. Bila salah satunya diubah, ubah keduanya — pengguna
+   membaca yang di layar, sedangkan yang dilampirkan pada
+   perjanjian adalah yang di berkas.
+   ============================================================ */
+
+function tabTentang() {
+  var sub = subAktif('tentang', 'versi');
+  var html = pil('tentang', [
+    { k: 'versi', n: 'Versi' },
+    { k: 'syarat', n: 'Syarat & Ketentuan' },
+    { k: 'privasi', n: 'Privasi' },
+    { k: 'sumber', n: 'Sumber Terbuka' }
+  ], 'versi');
+
+  if (sub === 'syarat') html += bagianSyarat();
+  else if (sub === 'privasi') html += bagianPrivasi();
+  else if (sub === 'sumber') html += bagianSumberTerbuka();
+  else html += bagianVersi();
+  return html;
+}
+
+/* ------------------------------------------------------------
+   VERSI
+   ------------------------------------------------------------ */
+
+function modeJalan() {
+  if (typeof DEMO_AKTIF !== 'undefined' && DEMO_AKTIF) return 'Demo (data di peramban)';
+  if (modeGas()) return 'Apps Script (Web App)';
+  return 'PWA — GitHub Pages';
+}
+
+function bagianVersi() {
+  var demo = (typeof DEMO_AKTIF !== 'undefined' && DEMO_AKTIF);
+  var vPeladen = S.versiPeladen || '';
+  /* Pemeriksaan sengaja TIDAK dilewati pada mode demo. Peladen tiruan
+     mengirimkan versinya sendiri, sehingga jalur peringatan ini ikut
+     teruji setiap kali demo dijalankan — bukan hanya di pemasangan
+     sungguhan, yang justru paling jarang diuji. */
+  var beda = vPeladen && vPeladen !== VERSI_KLIEN;
+
+  var html = '<div class="kartu"><div style="text-align:center;padding:10px 0 14px">' +
+    '<div style="font-size:2.1rem;line-height:1">🌱</div>' +
+    '<div style="font-size:1.25rem;font-weight:800;margin-top:4px">TaniPintar</div>' +
+    '<div style="font-size:.82rem;color:var(--redup)">WebGIS &amp; Manajemen Kebun ' +
+    'Petani</div>' +
+    '<div style="margin-top:8px"><span class="lencana hijau">v' + esc(VERSI_KLIEN) +
+    '</span></div></div>';
+
+  if (beda) {
+    html += '<div class="spanduk merah"><span>⚠️</span><span>' +
+      '<b>Versi antarmuka dan peladen berbeda</b>' +
+      'Antarmuka v' + esc(VERSI_KLIEN) + ', peladen v' + esc(vPeladen) + '. ' +
+      'Ini terjadi bila <code>Code.gs</code> diperbarui tetapi <code>Index.html</code> ' +
+      'belum ditempel ulang, atau sebaliknya. Sebagian fitur bisa berhenti bekerja ' +
+      'tanpa pesan galat. Salin ulang <b>seluruh</b> berkas dari paket yang sama, lalu ' +
+      'terapkan ulang Web App.</span></div>';
+  }
+
+  html += '<div class="kisi kisi2">' +
+    barisInfo('Versi antarmuka', VERSI_KLIEN) +
+    barisInfo('Versi peladen', demo ? '(tidak ada — mode demo)'
+      : (vPeladen || 'belum terbaca')) +
+    barisInfo('Tanggal rilis', tglIndo(S.tanggalRilis || TANGGAL_RILIS_KLIEN, true)) +
+    barisInfo('Mode jalan', modeJalan()) +
+    barisInfo('Status jaringan', S.daring ? 'Daring' : 'Luring') +
+    barisInfo('Antrean belum terkirim', S.antrean.length) +
+    '</div>';
+
+  if (!demo) {
+    html += '<hr class="pisah"><h4>Basis data</h4><div class="kisi kisi2">' +
+      barisInfo('Nama', (S.database || {}).nama) +
+      barisInfo('ID', (S.database || {}).id) + '</div>';
+  }
+
+  html += '<hr class="pisah"><h4>Lisensi pemakaian</h4>';
+  var l = S.lisensi || {};
+  if (demo) {
+    html += '<p style="font-size:.85rem">Versi demo — tidak memerlukan lisensi.</p>';
+  } else if (l.belumDisetel) {
+    html += '<p style="font-size:.85rem">Kunci publik penyedia belum dipasang, sehingga ' +
+      'pemeriksaan lisensi dilewati.</p>';
+  } else {
+    html += '<div class="kisi kisi2">' +
+      barisInfo('Status', l.aktif ? 'Aktif' : 'Tidak aktif (mode pembaca)') +
+      barisInfo('Jenis', l.jenis) +
+      barisInfo('Terdaftar atas nama', l.pelanggan) +
+      barisInfo('Berlaku sampai', l.sampai ? tglIndo(l.sampai, true) : 'Tanpa batas') +
+      '</div>';
+  }
+  html += '</div>';
+
+  /* Riwayat perubahan — ditulis dari sudut pandang pemakai, bukan
+     daftar perubahan kode. Pengguna perlu tahu apa yang berubah bagi
+     dirinya, bukan nama fungsi yang diperbaiki. */
+  html += '<div class="kartu"><h3>Riwayat perubahan</h3>' +
+    catatanVersi('1.6.0', '4 September 2026', [
+      'Rekap bulanan: ringkasan, pembanding bulan sebelumnya, dan catatan penjelas',
+      'Rekap tahunan: rincian dua belas bulan dan pembanding tahun sebelumnya',
+      'Laporan dapat dicetak dan diekspor ke CSV'
+    ]) +
+    catatanVersi('1.5.0', '3 September 2026', [
+      'Tombol Kembali di ponsel tidak lagi langsung menutup aplikasi',
+      'Tombol silang (×) untuk mengosongkan isian dengan sekali tekan',
+      'Halaman Tentang: versi, syarat &amp; ketentuan, dan pemberitahuan privasi'
+    ]) +
+    catatanVersi('1.4.0', '19 Agustus 2026', [
+      'Perbaikan: warna batas petak yang tidak tersimpan',
+      'Tombol Enter berfungsi sebagai Simpan, termasuk di papan ketik ponsel',
+      'Menu baru di Spreadsheet: Perbarui Struktur Lembar'
+    ]) +
+    catatanVersi('1.3.0', '17 Agustus 2026', [
+      'Batas petak dapat diberi warna, tebal, dan kepekatan sendiri',
+      'Mode pembaca saat lisensi berakhir — data lama tetap terbuka',
+      'Versi demo mandiri untuk mencoba tanpa pemasangan'
+    ]) +
+    catatanVersi('1.2.0', '16 Agustus 2026', [
+      'Manajemen per pokok untuk tanaman tahunan',
+      'Penyusunan titik tanam otomatis dari jarak tanam',
+      'Sensus massal, panen per pokok, dan ekspor titik ke QField'
+    ]) +
+    catatanVersi('1.1.0', '16 Agustus 2026', [
+      'Perbaikan setelan peta dasar dan pilihan URL layanan sendiri',
+      'Tombol uji ubin peta sebelum disimpan'
+    ]) +
+    catatanVersi('1.0.0', '16 Agustus 2026', [
+      'Rilis pertama'
+    ]) + '</div>';
+  return html;
+}
+
+function catatanVersi(versi, tanggal, butir) {
+  var html = '<div class="item"><div class="ikon">v</div><div class="isi">' +
+    '<b>' + esc(versi) + '</b><small>' + esc(tanggal) + '</small>' +
+    '<ul style="font-size:.82rem;padding-left:16px;margin:4px 0 0;line-height:1.6">';
+  for (var i = 0; i < butir.length; i++) html += '<li>' + butir[i] + '</li>';
+  return html + '</ul></div></div>';
+}
+
+/* ------------------------------------------------------------
+   SYARAT & KETENTUAN
+   ------------------------------------------------------------ */
+
+function bagianSyarat() {
+  var nama = (S.pengaturan || {}).namaKelompok || 'pengelola aplikasi';
+
+  return '<div class="kartu"><h3>📄 Syarat &amp; Ketentuan Pemakaian</h3>' +
+    '<p style="font-size:.78rem;color:var(--redup)">Berlaku sejak 3 September 2026. ' +
+    'Versi aplikasi ' + esc(VERSI_KLIEN) + '.</p>' +
+
+    '<div class="spanduk kuning"><span>⚠️</span><span><b>Ini bukan nasihat hukum</b>' +
+    'Naskah ini disusun sebagai rancangan umum. Sebelum dipakai pada perjanjian ' +
+    'berbayar, terutama dengan koperasi atau instansi, mintalah pemeriksaan penasihat ' +
+    'hukum. Ketentuan yang tidak diperiksa lebih berbahaya daripada tidak ada ' +
+    'ketentuan sama sekali, karena memberi rasa aman yang keliru.</span></div>' +
+
+    pasal('1. Hak pakai', [
+      'Lisensi yang diberikan bersifat <b>tidak eksklusif dan tidak dapat dialihkan</b>, ' +
+      'terikat pada satu berkas Google Spreadsheet tertentu. Kunci lisensi tidak akan ' +
+      'berfungsi pada berkas lain.',
+      'Anda boleh memakai aplikasi untuk keperluan kelompok, koperasi, atau usaha Anda ' +
+      'sendiri, termasuk untuk lahan milik anggota yang Anda kelola.',
+      'Anda <b>tidak boleh</b> menjual ulang, menyewakan, atau memberikan sublisensi ' +
+      'aplikasi ini kepada pihak lain tanpa persetujuan tertulis dari penyedia.'
+    ]) +
+
+    pasal('2. Kode program', [
+      'Aplikasi ini berjalan di dalam akun Google Anda sendiri, sehingga seluruh kode ' +
+      'programnya berada di tangan Anda. Anda boleh membacanya dan menyuntingnya untuk ' +
+      'keperluan sendiri.',
+      'Namun dukungan teknis dan jaminan hanya berlaku atas versi yang tidak disunting. ' +
+      'Bila kode diubah, penyedia tidak dapat menjamin fungsinya maupun menelusuri ' +
+      'persoalan yang timbul.',
+      'Menghapus atau melumpuhkan pemeriksaan lisensi merupakan pelanggaran perjanjian ' +
+      'ini, meskipun secara teknis dapat dilakukan.'
+    ]) +
+
+    pasal('3. Masa berlaku dan mode pembaca', [
+      'Setelah masa lisensi berakhir, aplikasi <b>tidak dikunci</b>. Ia beralih ke mode ' +
+      'pembaca: seluruh data lama tetap dapat dibuka, disaring, dicetak, dan diekspor. ' +
+      'Yang berhenti hanyalah pencatatan baru.',
+      'Data Anda tetap tersimpan di Spreadsheet milik Anda sendiri dan dapat dibuka ' +
+      'langsung dari sana kapan saja, dengan atau tanpa aplikasi ini.'
+    ]) +
+
+    pasal('4. Sifat angka dan saran yang ditampilkan', [
+      '<b>Perkiraan hasil panen, kalkulator dosis pupuk, prediksi stok, dan diagnosis ' +
+      'hama adalah alat bantu, bukan nasihat agronomi.</b> Aplikasi tidak melihat ' +
+      'lahan Anda dan tidak mengetahui keadaan yang tidak Anda catat.',
+      'Angka prediksi ditandai sumbernya — apakah berasal dari riwayat panen nyata atau ' +
+      'dari perkiraan bawaan komoditas. Perlakukan angka bertanda perkiraan sebagai ' +
+      'gambaran kasar.',
+      'Untuk keputusan bernilai besar — pemupukan skala luas, pembongkaran tanaman, ' +
+      'pengajuan kredit — mintalah pendapat penyuluh, dan untuk kesuburan tanah ' +
+      'lakukan uji laboratorium.',
+      'Seluruh keputusan atas lahan Anda tetap menjadi tanggung jawab Anda.'
+    ]) +
+
+    pasal('5. Kewajiban Anda', [
+      'Menjaga kerahasiaan PIN masing-masing pengguna, dan segera mengganti PIN bawaan.',
+      'Menyediakan dan membiayai kunci API sendiri untuk layanan pihak ketiga yang Anda ' +
+      'pilih (peta berbayar, Gemini). Biaya pemakaiannya di luar lisensi ini.',
+      'Mematuhi ketentuan penyedia peta yang Anda daftarkan, termasuk menampilkan ' +
+      'atribusi yang diwajibkan.',
+      'Tidak memakai fitur buletin untuk pengiriman pesan massal yang tidak dikehendaki ' +
+      'penerimanya. Aplikasi sengaja tidak mengirim pesan otomatis; pengiriman tetap ' +
+      'Anda lakukan satu per satu.',
+      'Memperoleh persetujuan dari petani yang datanya Anda catat — lihat tab Privasi.'
+    ]) +
+
+    pasal('6. Layanan pihak ketiga', [
+      'Aplikasi bergantung pada layanan yang tidak dikendalikan penyedia: Google ' +
+      'Spreadsheet dan Apps Script, layanan peta yang Anda pilih, Open-Meteo, dan ' +
+      'Gemini bila Anda mengaktifkannya.',
+      'Perubahan kebijakan, kuota, harga, atau penghentian layanan tersebut berada di ' +
+      'luar kendali penyedia dan tidak menjadi dasar penggantian biaya lisensi.'
+    ]) +
+
+    pasal('7. Tanpa jaminan dan batas tanggung jawab', [
+      'Aplikasi disediakan <b>sebagaimana adanya</b>. Penyedia tidak menjamin aplikasi ' +
+      'akan bebas dari kesalahan atau tersedia tanpa henti.',
+      'Sejauh diizinkan hukum yang berlaku, tanggung jawab penyedia atas kerugian yang ' +
+      'timbul dibatasi paling banyak sebesar biaya lisensi yang telah Anda bayarkan ' +
+      'untuk masa berlaku yang sedang berjalan.',
+      'Penyedia tidak bertanggung jawab atas kehilangan hasil panen, kerugian usaha, ' +
+      'atau kerugian tidak langsung lainnya.',
+      'Ketentuan ini tidak mengurangi hak Anda yang tidak dapat dikesampingkan menurut ' +
+      'peraturan perundang-undangan Indonesia.'
+    ]) +
+
+    pasal('8. Cadangan data', [
+      'Data Anda tersimpan di Google Spreadsheet, yang menyimpan riwayat versi secara ' +
+      'otomatis. Meski begitu, <b>pencadangan tetap tanggung jawab Anda</b>.',
+      'Aplikasi menyediakan tombol Unduh cadangan JSON dan ekspor GeoJSON di Setelan. ' +
+      'Untuk kelompok yang aktif, mencadangkan sebulan sekali sudah memadai.'
+    ]) +
+
+    pasal('9. Perubahan ketentuan', [
+      'Penyedia dapat memperbarui ketentuan ini pada rilis berikutnya. Perubahan yang ' +
+      'bersifat mendasar akan diberitahukan kepada pemegang lisensi yang masih berlaku.',
+      'Ketentuan yang berlaku bagi Anda adalah yang disertakan pada versi aplikasi yang ' +
+      'Anda pasang.'
+    ]) +
+
+    pasal('10. Hukum yang berlaku', [
+      'Perjanjian ini tunduk pada hukum Republik Indonesia. Perselisihan diupayakan ' +
+      'diselesaikan secara musyawarah terlebih dahulu.'
+    ]) +
+
+    '<hr class="pisah"><p style="font-size:.8rem;color:var(--redup)">Pertanyaan ' +
+    'mengenai ketentuan ini dapat disampaikan kepada ' + esc(nama) + ' atau kepada ' +
+    'penyedia aplikasi.</p>' +
+    '</div>';
+}
+
+/* ------------------------------------------------------------
+   PEMBERITAHUAN PRIVASI
+   ------------------------------------------------------------ */
+
+function bagianPrivasi() {
+  var kelompok = (S.pengaturan || {}).namaKelompok || '(nama kelompok belum diisi)';
+  var demo = (typeof DEMO_AKTIF !== 'undefined' && DEMO_AKTIF);
+
+  var html = '<div class="kartu"><h3>🔒 Pemberitahuan Privasi</h3>' +
+    '<p style="font-size:.78rem;color:var(--redup)">Berlaku sejak 3 September 2026. ' +
+    'Disusun mengacu pada UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi.</p>';
+
+  if (demo) {
+    html += '<div class="spanduk kuning"><span>🧪</span><span><b>Anda sedang memakai ' +
+      'versi demo</b>Tidak ada data yang dikirim ke mana pun. Seluruh isi demo berada ' +
+      'di peramban ini dan hilang saat halaman disegarkan.</span></div>';
+  }
+
+  html += '<div class="spanduk hijau"><span>🏠</span><span>' +
+    '<b>Data Anda tidak pernah singgah di komputer penyedia aplikasi</b>' +
+    'Seluruh catatan tersimpan di Google Spreadsheet atas nama akun Google Anda ' +
+    'sendiri. Penyedia aplikasi tidak menyimpan salinannya, tidak dapat membukanya, ' +
+    'dan tidak memiliki jalur untuk mengaksesnya.</span></div>' +
+
+    pasal('Siapa yang bertanggung jawab atas data ini', [
+      'Menurut UU 27/2022, <b>pengendali data pribadi</b> adalah pihak yang menentukan ' +
+      'tujuan dan mengendalikan pemrosesan data. Dalam aplikasi ini pihak tersebut ' +
+      'adalah <b>' + esc(kelompok) + '</b> — bukan penyedia perangkat lunak.',
+      'Artinya, kewajiban terhadap petani yang datanya dicatat — memberi tahu, meminta ' +
+      'persetujuan, melayani permintaan koreksi dan penghapusan — berada pada pengelola ' +
+      'aplikasi, bukan pada pembuatnya.'
+    ]) +
+
+    pasal('Data apa yang disimpan', [
+      '<b>Data pribadi petani:</b> nama, nomor telepon, alamat atau desa, dan nama ' +
+      'kelompok tani.',
+      '<b>Data lahan:</b> koordinat batas kebun, luas, komoditas, dan foto tanaman. ' +
+      'Perlu disadari bahwa <b>koordinat lahan yang digabung dengan nama pemiliknya ' +
+      'termasuk data pribadi</b> — ia menunjukkan lokasi seseorang secara tepat.',
+      '<b>Data usaha:</b> catatan biaya, hasil panen, harga jual, piutang, dan nama ' +
+      'pembeli. Bagi banyak petani, angka penghasilan tergolong hal yang sangat ' +
+      'pribadi.',
+      '<b>Data akun:</b> surel dan PIN. PIN <b>tidak</b> disimpan sebagai teks biasa, ' +
+      'melainkan sebagai ringkasan SHA-256 bergaram yang tidak dapat dikembalikan ' +
+      'menjadi PIN aslinya.'
+    ]) +
+
+    pasal('Ke mana data dapat keluar', [
+      '<b>Google</b> — sebagai tempat penyimpanan (Spreadsheet) dan tempat aplikasi ' +
+      'berjalan (Apps Script). Tunduk pada ketentuan privasi akun Google Anda sendiri.',
+      '<b>Penyedia peta yang Anda pilih</b> — menerima alamat IP perangkat dan ' +
+      'perkiraan wilayah peta yang sedang dibuka. Pada mode bawaan (kisi lokal), tidak ' +
+      'ada permintaan keluar sama sekali.',
+      '<b>Open-Meteo</b> — menerima titik koordinat acuan untuk mengambil prakiraan ' +
+      'cuaca. Tidak menerima nama, nomor telepon, maupun data usaha.',
+      '<b>Google Gemini</b> — <u>hanya bila Anda memasang kunci API</u>. Yang dikirim ' +
+      'adalah pertanyaan yang Anda ketik, keterangan gejala, foto yang Anda lampirkan, ' +
+      'dan ringkasan kebun (nama petak, komoditas, jadwal, ringkasan panen). ' +
+      '<b>Bila Anda tidak ingin data kebun dikirim ke layanan AI, jangan pasang kunci ' +
+      'Gemini</b> — aplikasi tetap berfungsi penuh tanpanya, dan diagnosis hama dijawab ' +
+      'dari basis pengetahuan yang tertanam di dalam aplikasi.',
+      '<b>WhatsApp</b> — hanya saat Anda menekan tombol kirim. Aplikasi menyusun teks ' +
+      'pesan, lalu WhatsApp yang mengirimkannya. Tidak ada pengiriman otomatis.'
+    ]) +
+
+    pasal('Yang tidak dilakukan aplikasi ini', [
+      'Tidak menampilkan iklan.',
+      'Tidak memasang pelacak, analitik pihak ketiga, maupun kuki pemasaran.',
+      'Tidak menjual, menyewakan, atau membagikan data kepada pihak lain.',
+      'Tidak mengirim data ke peladen penyedia aplikasi — penyedia tidak memiliki ' +
+      'peladen untuk itu.',
+      'Tidak mengakses lokasi perangkat kecuali Anda menekan tombol yang meminta GPS, ' +
+      'misalnya saat menggambar batas petak atau mencatat titik pokok.'
+    ]) +
+
+    pasal('Data yang disimpan di perangkat', [
+      'Untuk dapat bekerja tanpa sinyal, aplikasi menyimpan salinan data di peramban ' +
+      'perangkat Anda, beserta token sesi dan pengaturan tampilan.',
+      'Salinan ini dapat dihapus kapan saja lewat <b>Setelan ▸ Data &amp; Luring ▸ ' +
+      'Hapus salinan lokal</b>. Pastikan antrean sudah terkirim sebelum menghapusnya.',
+      'Pada perangkat bersama, keluarlah dari akun setelah selesai memakai.'
+    ]) +
+
+    pasal('Hak petani atas datanya', [
+      'Menurut UU 27/2022, setiap orang berhak mengetahui data apa yang disimpan ' +
+      'tentang dirinya, meminta perbaikan bila keliru, meminta penghapusan, dan ' +
+      'menarik persetujuan yang pernah diberikan.',
+      'Karena seluruh data berada di Spreadsheet pengelola, permintaan semacam itu ' +
+      'dilaksanakan langsung oleh <b>' + esc(kelompok) + '</b>. Penyedia aplikasi tidak ' +
+      'dapat melaksanakannya, karena memang tidak memiliki akses.',
+      'Aplikasi menyediakan tombol hapus pada setiap catatan, dan ekspor JSON maupun ' +
+      'GeoJSON bila seorang petani meminta salinan datanya.'
+    ]) +
+
+    pasal('Berapa lama data disimpan', [
+      'Selama Spreadsheet Anda ada. Aplikasi tidak menghapus data dengan sendirinya, ' +
+      'kecuali pemangkasan prakiraan cuaca lama yang tidak memuat data pribadi.',
+      'Menentukan berapa lama catatan petani yang sudah tidak menjadi anggota masih ' +
+      'perlu disimpan adalah keputusan pengelola. Menyimpan selamanya tanpa alasan ' +
+      'bukan praktik yang baik.'
+    ]) +
+
+    pasal('Keamanan', [
+      'Masuk memerlukan surel dan PIN. PIN salah lima kali berturut-turut mengunci akun ' +
+      'sepuluh menit. Sesi berlaku 30 hari.',
+      'Peran pengguna menentukan wewenang: pengamat hanya dapat melihat, petani ' +
+      'mencatat, penyuluh mengelola kelompok, admin mengatur seluruhnya. Berilah peran ' +
+      'serendah mungkin yang masih memungkinkan seseorang bekerja.',
+      '<b>Batas yang perlu dinyatakan terus terang:</b> siapa pun yang memiliki akses ' +
+      'ke Spreadsheet lewat Google Drive dapat membaca seluruh data tanpa melalui ' +
+      'aplikasi. Berhati-hatilah saat membagikan berkas Spreadsheet itu, dan periksa ' +
+      'daftar orang yang sudah Anda beri akses.'
+    ]) +
+
+    pasal('Anak-anak', [
+      'Aplikasi ini ditujukan bagi petani dewasa dan pengelola kelompok, bukan bagi ' +
+      'anak-anak. Jangan mencatat data pribadi anak tanpa persetujuan orang tua atau ' +
+      'walinya.'
+    ]) +
+
+    '<hr class="pisah"><h4>Yang perlu dilakukan pengelola</h4>' +
+    '<ul style="font-size:.85rem;padding-left:18px;line-height:1.7;margin:0">' +
+    '<li>Beri tahu anggota bahwa data mereka dicatat, dan untuk apa.</li>' +
+    '<li>Minta persetujuan sebelum mencatat nomor telepon dan koordinat lahan.</li>' +
+    '<li>Isi nama kelompok dan kontak di Setelan agar pemberitahuan ini menyebut pihak ' +
+    'yang benar.</li>' +
+    '<li>Putuskan siapa saja yang boleh membuka Spreadsheet, dan tinjau berkala.</li>' +
+    '<li>Bila memasang kunci Gemini, sampaikan kepada anggota bahwa keterangan gejala ' +
+    'dan foto akan dikirim ke layanan AI milik Google.</li>' +
+    '</ul>' +
+    '</div>';
+  return html;
+}
+
+/* ------------------------------------------------------------
+   SUMBER TERBUKA & ATRIBUSI
+   ------------------------------------------------------------ */
+
+function bagianSumberTerbuka() {
+  return '<div class="kartu"><h3>📦 Perangkat Lunak Pihak Ketiga</h3>' +
+    '<p style="font-size:.83rem;color:var(--redup)">Aplikasi ini memakai sedikit sekali ' +
+    'pustaka luar, dan semuanya tertanam di dalam berkas aplikasi — tidak ada yang ' +
+    'diunduh dari jaringan saat dibuka.</p>' +
+    '<div class="gulir"><table><thead><tr><th>Nama</th><th>Lisensi</th><th>Untuk apa</th>' +
+    '</tr></thead><tbody>' +
+    '<tr><td><b>Leaflet 1.9.4</b></td><td>BSD-2-Clause</td>' +
+    '<td>Menggambar peta, poligon petak, dan titik pokok</td></tr>' +
+    '<tr><td><b>Open-Meteo</b></td><td>CC-BY 4.0</td>' +
+    '<td>Prakiraan cuaca (gratis, boleh dipakai komersial)</td></tr>' +
+    '</tbody></table></div>' +
+
+    '<div class="spanduk biru"><span>🗺️</span><span><b>Mengapa tidak ada peta gratis ' +
+    'bawaan</b>Sumber ubin gratis yang lazim dipakai — tile.openstreetmap.org dan ' +
+    'server.arcgisonline.com — ketentuan pemakaiannya melarang aplikasi komersial dan ' +
+    'penyimpanan luring. Menyertakannya berarti melanggar, dengan risiko akses diblokir ' +
+    'tanpa pemberitahuan. Karena itu aplikasi memakai kunci penyedia peta milik Anda ' +
+    'sendiri, dan bekerja penuh tanpa kunci apa pun memakai kisi lokal.</span></div>' +
+
+    '<hr class="pisah"><h4>Leaflet — BSD-2-Clause</h4>' +
+    '<p style="font-size:.76rem;color:var(--redup);line-height:1.6">' +
+    'Copyright (c) 2010-2023, Volodymyr Agafonkin; Copyright (c) 2010-2011, CloudMade. ' +
+    'Redistribusi dan pemakaian dalam bentuk sumber maupun biner, dengan atau tanpa ' +
+    'perubahan, diizinkan sepanjang pemberitahuan hak cipta di atas disertakan. ' +
+    'Teks lisensi selengkapnya tertanam sebagai komentar di dalam berkas aplikasi ini.' +
+    '</p>' +
+
+    '<hr class="pisah"><h4>Ikon</h4>' +
+    '<p style="font-size:.83rem">Seluruh ikon memakai emoji Unicode yang sudah tersedia ' +
+    'di setiap perangkat. Tidak ada berkas ikon berlisensi yang disertakan, sehingga ' +
+    'tidak ada kewajiban atribusi.</p>' +
+    '</div>';
+}
+
+/* ------------------------------------------------------------
+   PEMBANTU
+   ------------------------------------------------------------ */
+
+function pasal(judul, butir) {
+  var html = '<hr class="pisah"><h4>' + esc(judul) + '</h4>' +
+    '<ul style="font-size:.85rem;padding-left:18px;line-height:1.75;margin:0">';
+  for (var i = 0; i < butir.length; i++) html += '<li>' + butir[i] + '</li>';
+  return html + '</ul>';
+}
+
+/** Membuka dokumen dari layar masuk, saat tab Tentang belum terjangkau. */
+function bukaDokumenLegal(mana) {
+  S.subtab['tentang'] = mana;
+  modalBuka(mana === 'privasi' ? 'Pemberitahuan Privasi' : 'Syarat & Ketentuan',
+            mana === 'privasi' ? bagianPrivasi() : bagianSyarat());
+}
+
+
+/* ============================================================
+   LAPORAN & REKAP — bulanan dan tahunan
+   ============================================================
+   Rumus di berkas ini adalah salinan dari Laporan.gs. Disengaja:
+   rekap harus tetap terbuka saat luring, dan angka yang berbeda
+   antara layar dan cetakan membuat pengguna kehilangan kepercayaan
+   pada kedua-duanya.
+
+   Bila salah satunya diubah, ubah keduanya.
+   ============================================================ */
+
+var _laporan = { data: null, jenis: 'bulanan', tahun: 0, bulan: 0, sumber: '' };
+
+var BULAN_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli',
+                'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+function tabLaporan() {
+  if (!_laporan.tahun) {
+    var awal = periodeAwal();
+    _laporan.tahun = awal.tahun;
+    _laporan.bulan = awal.bulan;
+  }
+
+  var sub = subAktif('laporan', 'bulanan');
+  var html = pil('laporan', [
+    { k: 'bulanan', n: 'Rekap Bulanan' },
+    { k: 'tahunan', n: 'Rekap Tahunan' }
+  ], 'bulanan');
+
+  html += (sub === 'tahunan') ? panelTahunan() : panelBulanan();
+  return html;
+}
+
+/* ------------------------------------------------------------
+   PEMILIH PERIODE
+   ------------------------------------------------------------ */
+
+/**
+ * Periode yang dibuka pertama kali: bulan TERAKHIR yang benar-benar
+ * punya catatan.
+ *
+ * Membuka bulan berjalan terasa lebih masuk akal, tetapi pada awal
+ * bulan — atau pada kelompok yang mencatatnya menyusul — laporan yang
+ * terbuka akan kosong seluruhnya. Pengguna yang melihat semua angka nol
+ * pada percobaan pertama menyimpulkan fiturnya rusak, bukan bahwa
+ * datanya memang belum ada.
+ */
+function periodeAwal() {
+  var sekarang = new Date();
+  var terbaru = '';
+  var sumber = [['biaya', 'tanggal'], ['panen', 'tanggal'], ['aktivitas', 'waktu']];
+  for (var s = 0; s < sumber.length; s++) {
+    var baris = S.data[sumber[s][0]] || [];
+    for (var i = 0; i < baris.length; i++) {
+      var t = String(baris[i][sumber[s][1]] || '').substring(0, 7);
+      if (/^\d{4}-\d{2}$/.test(t) && t > terbaru) terbaru = t;
+    }
+  }
+  if (!terbaru) {
+    return { tahun: sekarang.getFullYear(), bulan: sekarang.getMonth() + 1 };
+  }
+  return { tahun: Number(terbaru.substring(0, 4)),
+           bulan: Number(terbaru.substring(5, 7)) };
+}
+
+function tahunTersediaLokal() {
+  var ada = {};
+  var sumber = [['biaya', 'tanggal'], ['panen', 'tanggal'], ['aktivitas', 'waktu'],
+                ['kerusakan', 'tanggal'], ['jadwal', 'tanggal']];
+  for (var s = 0; s < sumber.length; s++) {
+    var baris = S.data[sumber[s][0]] || [];
+    for (var i = 0; i < baris.length; i++) {
+      var t = String(baris[i][sumber[s][1]] || '').substring(0, 4);
+      if (/^\d{4}$/.test(t)) ada[t] = true;
+    }
+  }
+  var daftar = [];
+  for (var y in ada) daftar.push(Number(y));
+  var kini = new Date().getFullYear();
+  if (daftar.indexOf(kini) < 0) daftar.push(kini);
+  daftar.sort(function (a, b) { return b - a; });
+  return daftar;
+}
+
+function pemilihPeriode(denganBulan) {
+  var tahun = tahunTersediaLokal();
+  var opsiTahun = tahun.map(function (t) {
+    return '<option value="' + t + '"' +
+      (t === _laporan.tahun ? ' selected' : '') + '>' + t + '</option>';
+  }).join('');
+
+  var html = '<div class="kartu takCetak"><div class="baris">';
+  if (denganBulan) {
+    var opsiBulan = '';
+    for (var b = 1; b <= 12; b++) {
+      opsiBulan += '<option value="' + b + '"' +
+        (b === _laporan.bulan ? ' selected' : '') + '>' + BULAN_ID[b - 1] + '</option>';
+    }
+    html += '<label class="ruas" style="flex:1;min-width:130px;margin:0">' +
+      '<span class="nama">Bulan</span>' +
+      '<select onchange="_laporan.bulan=Number(this.value);muatLaporan()">' +
+      opsiBulan + '</select></label>';
+  }
+  html += '<label class="ruas" style="flex:1;min-width:110px;margin:0">' +
+    '<span class="nama">Tahun</span>' +
+    '<select onchange="_laporan.tahun=Number(this.value);muatLaporan()">' +
+    opsiTahun + '</select></label>' +
+    '<button class="tbl sekunder kecil" style="align-self:flex-end" ' +
+    'onclick="muatLaporan()">🔄 Muat ulang</button>' +
+    '</div></div>';
+  return html;
+}
+
+/* ------------------------------------------------------------
+   PEMUATAN
+   ------------------------------------------------------------ */
+
+function muatLaporan() {
+  var jenis = subAktif('laporan', 'bulanan');
+  if (_laporan.data && _laporan.data.jenis !== jenis) _laporan.data = null;
+  _laporan.jenis = jenis;
+
+  var wadah = $('isiLaporan');
+  if (wadah) {
+    wadah.innerHTML = '<div class="spanduk biru"><span class="muat"></span>' +
+      '<span>Menyusun laporan…</span></div>';
+  }
+
+  /* Luring: dihitung dari salinan lokal. Hasilnya sama karena
+     rumusnya sama, tetapi ditandai sumbernya supaya pengguna tahu
+     laporan ini belum menyertakan data yang belum tersinkron. */
+  if (!S.daring) {
+    _laporan.data = (jenis === 'tahunan')
+      ? laporanTahunanLokal(_laporan.tahun)
+      : laporanBulananLokal(_laporan.tahun, _laporan.bulan);
+    _laporan.sumber = 'lokal';
+    render();
+    return Promise.resolve();
+  }
+
+  var aksi = jenis === 'tahunan' ? 'laporan_tahunan' : 'laporan_bulanan';
+  var data = jenis === 'tahunan'
+    ? { tahun: _laporan.tahun }
+    : { tahun: _laporan.tahun, bulan: _laporan.bulan };
+
+  return panggil(aksi, data).then(function (r) {
+    _laporan.data = r;
+    _laporan.sumber = 'peladen';
+    render();
+  }).catch(function (e) {
+    /* Gagal memuat bukan berarti laporan tidak bisa dibuat. */
+    _laporan.data = (jenis === 'tahunan')
+      ? laporanTahunanLokal(_laporan.tahun)
+      : laporanBulananLokal(_laporan.tahun, _laporan.bulan);
+    _laporan.sumber = 'lokal';
+    render();
+    toast('Laporan disusun dari salinan lokal: ' + e.message, 'galat');
+  });
+}
+
+function panelBulanan() {
+  var html = pemilihPeriode(true) + '<div id="isiLaporan">';
+  if (_laporan.data && _laporan.data.jenis === 'bulanan') {
+    html += gambarLaporan(_laporan.data);
+  } else {
+    html += '<div class="kartu"><div class="kosong"><span class="muat"></span>' +
+      'Menyusun laporan…</div></div>';
+    setTimeout(muatLaporan, 30);
+  }
+  return html + '</div>';
+}
+
+function panelTahunan() {
+  var html = pemilihPeriode(false) + '<div id="isiLaporan">';
+  if (_laporan.data && _laporan.data.jenis === 'tahunan') {
+    html += gambarLaporan(_laporan.data);
+  } else {
+    html += '<div class="kartu"><div class="kosong"><span class="muat"></span>' +
+      'Menyusun laporan…</div></div>';
+    setTimeout(muatLaporan, 30);
+  }
+  return html + '</div>';
+}
+
+/* ------------------------------------------------------------
+   PENGGAMBARAN
+   ------------------------------------------------------------ */
+
+function gambarLaporan(L) {
+  var t = L.kini.total;
+  var html = '';
+
+  /* Kepala laporan — ikut tercetak, jadi memuat identitas kelompok. */
+  html += '<div class="kartu"><div class="baris">' +
+    '<div><h2 style="margin:0">' +
+    esc(S.pengaturan.namaKelompok || S.pengaturan.namaAplikasi || 'TaniPintar') +
+    '</h2>' +
+    '<div style="font-size:1.05rem;font-weight:700;color:var(--utama2);margin-top:2px">' +
+    'Laporan ' + (L.jenis === 'tahunan' ? 'Tahunan' : 'Bulanan') + ' — ' +
+    esc(L.judul) + '</div>' +
+    '<small style="color:var(--redup)">Periode ' + tglIndo(L.periode.dari, true) +
+    ' sampai ' + tglIndo(L.periode.sampai, true) + '</small></div>' +
+    '<div class="kanan takCetak">' +
+    '<button class="tbl sekunder kecil" onclick="window.print()">🖨️ Cetak</button> ' +
+    '<button class="tbl sekunder kecil" onclick="unduhLaporanCsv()">⬇️ CSV</button>' +
+    '</div></div>';
+
+  if (_laporan.sumber === 'lokal') {
+    html += '<div class="spanduk kuning"><span>📴</span><span>' +
+      '<b>Disusun dari salinan di perangkat ini</b>Catatan yang belum tersinkron ' +
+      'ke Spreadsheet belum ikut terhitung. Muat ulang saat ada sinyal untuk angka ' +
+      'yang pasti.</span></div>';
+  }
+  if (!L.kini.adaData) {
+    html += '<div class="spanduk merah"><span>📭</span><span>' +
+      '<b>Tidak ada catatan pada periode ini</b>Seluruh angka nol di bawah berarti ' +
+      'belum dicatat — bukan berarti tidak ada kegiatan.</span></div>';
+  }
+  html += '</div>';
+
+  /* Ringkasan utama */
+  html += '<div class="kisi kisi4" style="margin-bottom:12px">' +
+    kartuStat('💰', 'Rp ' + rpSingkat(t.pendapatan), 'Pendapatan',
+              deltaTeks(L.perubahan.pendapatan, L.pembanding.judul)) +
+    kartuStat('💸', 'Rp ' + rpSingkat(t.biaya), 'Biaya',
+              deltaTeks(L.perubahan.biaya, L.pembanding.judul)) +
+    kartuStat(t.laba >= 0 ? '📈' : '📉', 'Rp ' + rpSingkat(t.laba), 'Laba Bersih',
+              'Margin ' + t.marginPersen + '%') +
+    kartuStat('🌾', rp(t.kg) + ' kg', 'Total Panen',
+              t.transaksiPanen + ' transaksi') +
+    '</div>';
+
+  /* Titik impas — angka paling berguna, diberi ruang sendiri */
+  if (t.kg > 0) {
+    var sehat = t.hargaRerataPerKg >= t.bepPerKg;
+    html += '<div class="spanduk ' + (sehat ? 'hijau' : 'merah') + '">' +
+      '<span>' + (sehat ? '⚖️' : '⚠️') + '</span><span>' +
+      '<b>Titik impas Rp ' + rp(t.bepPerKg) + ' per kg · harga jual rata-rata Rp ' +
+      rp(t.hargaRerataPerKg) + ' per kg</b>' +
+      (sehat
+        ? 'Penjualan pada periode ini menutup biayanya, dengan selisih Rp ' +
+          rp(t.hargaRerataPerKg - t.bepPerKg) + ' per kg.'
+        : 'Harga jual berada DI BAWAH titik impas sebesar Rp ' +
+          rp(t.bepPerKg - t.hargaRerataPerKg) + ' per kg. Penjualan pada periode ' +
+          'ini tidak menutup biayanya.') + '</span></div>';
+  }
+
+  /* Catatan naratif — untuk dibacakan di rapat anggota */
+  if (L.catatan && L.catatan.length) {
+    html += '<div class="kartu"><h3>Catatan</h3>';
+    for (var c = 0; c < L.catatan.length; c++) {
+      var n = L.catatan[c];
+      var ikon = n.jenis === 'bahaya' ? '⚠️' : (n.jenis === 'peringatan' ? '❗'
+        : (n.jenis === 'baik' ? '✅' : (n.jenis === 'kosong' ? '📭' : 'ℹ️')));
+      var warna = n.jenis === 'bahaya' ? 'merah'
+        : (n.jenis === 'peringatan' ? 'kuning'
+          : (n.jenis === 'baik' ? 'hijau' : 'biru'));
+      html += '<div class="spanduk ' + warna + '"><span>' + ikon + '</span><span>' +
+        esc(n.teks) + '</span></div>';
+    }
+    html += '</div>';
+  }
+
+  /* Rincian bulanan pada laporan tahunan */
+  if (L.bulanan) html += bagianGrafikBulanan(L);
+
+  /* Perbandingan periode */
+  html += bagianPembanding(L);
+
+  /* Per petak */
+  html += bagianTabelPetak(L.kini.petak);
+
+  /* Biaya per kategori */
+  html += bagianKategoriBiaya(L.kini.kategoriBiaya, t.biaya);
+
+  /* Panen per komoditas */
+  html += bagianKomoditas(L.kini.komoditas);
+
+  /* Kegiatan lapangan */
+  html += bagianKegiatan(L.kini);
+
+  /* Tanda tangan — laporan ini dibawa ke rapat dan ke bank */
+  html += '<div class="kartu"><div class="kisi kisi2" style="margin-top:10px">' +
+    '<div style="text-align:center"><small style="color:var(--redup)">Disusun oleh' +
+    '</small><div style="height:52px"></div>' +
+    '<div style="border-top:1px solid var(--garis);padding-top:5px;font-size:.85rem">' +
+    esc(L.dibuatOleh || (S.pengguna ? S.pengguna.nama : '')) + '</div></div>' +
+    '<div style="text-align:center"><small style="color:var(--redup)">Mengetahui' +
+    '</small><div style="height:52px"></div>' +
+    '<div style="border-top:1px solid var(--garis);padding-top:5px;font-size:.85rem">' +
+    'Ketua Kelompok</div></div></div>' +
+    '<p style="font-size:.72rem;color:var(--redup);text-align:center;margin-top:10px">' +
+    'Dibuat ' + esc(String(L.dibuatPada || '').replace('T', ' ').substring(0, 16)) +
+    ' · ' + esc(S.pengaturan.namaAplikasi || 'TaniPintar') + ' v' + VERSI_KLIEN +
+    '</p></div>';
+
+  return html;
+}
+
+function deltaTeks(d, judulPembanding) {
+  if (!d) return '';
+  if (d.persen === null || d.persen === undefined) {
+    /* Persentase tidak dihitung karena pembaginya nol. Menyebutnya
+       "tidak ada data pembanding" menyesatkan: periodenya mungkin
+       berisi, hanya angka INI yang nol di sana. */
+    return d.nilai === 0 ? 'Sama dengan ' + judulPembanding
+      : 'Nol pada ' + judulPembanding;
+  }
+  var tanda = d.nilai > 0 ? '▲ +' : (d.nilai < 0 ? '▼ ' : '');
+  return tanda + d.persen + '% vs ' + judulPembanding;
+}
+
+/* ---------- grafik 12 bulan ---------- */
+function bagianGrafikBulanan(L) {
+  var maks = 1;
+  for (var i = 0; i < L.bulanan.length; i++) {
+    maks = Math.max(maks, L.bulanan[i].pendapatan, L.bulanan[i].biaya);
+  }
+
+  var html = '<div class="kartu"><h3>Rincian per bulan</h3>' +
+    '<div class="baris" style="font-size:.72rem;margin-bottom:8px">' +
+    '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;' +
+    'background:var(--utama2)"></span> Pendapatan</span>' +
+    '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;' +
+    'background:var(--bahaya)"></span> Biaya</span></div>';
+
+  for (var b = 0; b < L.bulanan.length; b++) {
+    var m = L.bulanan[b];
+    html += '<div style="margin-bottom:9px">' +
+      '<div class="baris" style="font-size:.78rem">' +
+      '<span style="font-weight:700">' + esc(m.nama) + '</span>' +
+      '<span class="kanan" style="color:var(--redup)">' +
+      (m.adaData
+        ? 'Rp ' + rpSingkat(m.pendapatan) + ' · Rp ' + rpSingkat(m.biaya) +
+          ' · ' + rp(m.kg) + ' kg'
+        : 'belum ada catatan') + '</span></div>' +
+      '<div class="batang" style="height:7px;margin-top:3px"><i style="width:' +
+      Math.round(m.pendapatan / maks * 100) + '%"></i></div>' +
+      '<div class="batang" style="height:7px;margin-top:2px"><i style="width:' +
+      Math.round(m.biaya / maks * 100) + '%;background:var(--bahaya)"></i></div>' +
+      '</div>';
+  }
+
+  if (L.puncakPanen && L.puncakPanen.kg > 0) {
+    html += '<hr class="pisah"><div class="kisi kisi3">' +
+      barisInfo('Panen terbesar', L.puncakPanen.nama + ' — ' +
+                rp(L.puncakPanen.kg) + ' kg') +
+      barisInfo('Laba tertinggi', L.puncakLaba
+        ? L.puncakLaba.nama + ' — Rp ' + rpSingkat(L.puncakLaba.laba) : '-') +
+      barisInfo('Laba terendah', L.terendahLaba
+        ? L.terendahLaba.nama + ' — Rp ' + rpSingkat(L.terendahLaba.laba) : '-') +
+      '</div>';
+  }
+  return html + '</div>';
+}
+
+/* ---------- pembanding ---------- */
+function bagianPembanding(L) {
+  var k = L.kini.total, l = L.pembanding.total;
+  if (!L.pembanding.adaData) {
+    return '<div class="kartu"><h3>Perbandingan</h3>' +
+      '<div class="kosong"><span class="ik">📅</span>' +
+      'Tidak ada catatan pada ' + esc(L.pembanding.judul) +
+      ', jadi tidak ada yang bisa dibandingkan.</div></div>';
+  }
+
+  function baris(label, kini, lalu, d, satuan) {
+    var warna = d.nilai === 0 ? 'var(--redup)'
+      : (d.arah === 'naik' ? 'var(--sukses)' : 'var(--bahaya)');
+    return '<tr><td>' + esc(label) + '</td>' +
+      '<td class="angka">' + satuan + rp(kini) + '</td>' +
+      '<td class="angka">' + satuan + rp(lalu) + '</td>' +
+      '<td class="angka" style="color:' + warna + ';font-weight:700">' +
+      (d.nilai > 0 ? '+' : '') + satuan + rp(d.nilai) +
+      (d.persen !== null && d.persen !== undefined
+        ? '<br><small>' + (d.nilai > 0 ? '+' : '') + d.persen + '%</small>' : '') +
+      '</td></tr>';
+  }
+
+  /* Biaya naik bukan berita buruk dengan sendirinya, jadi warnanya
+     tidak dibalik — pembacaannya diserahkan ke pengguna, yang tahu
+     apakah kenaikan itu karena pemupukan atau karena pemborosan. */
+  return '<div class="kartu"><h3>Dibanding ' + esc(L.pembanding.judul) + '</h3>' +
+    '<div class="gulir"><table><thead><tr><th>Keterangan</th>' +
+    '<th class="angka">' + esc(L.judul) + '</th>' +
+    '<th class="angka">' + esc(L.pembanding.judul) + '</th>' +
+    '<th class="angka">Selisih</th></tr></thead><tbody>' +
+    baris('Pendapatan', k.pendapatan, l.pendapatan, L.perubahan.pendapatan, 'Rp ') +
+    baris('Biaya', k.biaya, l.biaya, L.perubahan.biaya, 'Rp ') +
+    baris('Laba', k.laba, l.laba, L.perubahan.laba, 'Rp ') +
+    baris('Panen (kg)', k.kg, l.kg, L.perubahan.kg, '') +
+    baris('Titik impas per kg', k.bepPerKg, l.bepPerKg, L.perubahan.bepPerKg, 'Rp ') +
+    '</tbody></table></div></div>';
+}
+
+/* ---------- per petak ---------- */
+function bagianTabelPetak(petak) {
+  if (!petak.length) {
+    return '<div class="kartu"><h3>Rincian per petak</h3>' +
+      '<div class="kosong"><span class="ik">🌾</span>Belum ada catatan yang ' +
+      'menempel pada petak.</div></div>';
+  }
+  var html = '<div class="kartu"><h3>Rincian per petak</h3>' +
+    '<div class="gulir"><table><thead><tr><th>Petak</th>' +
+    '<th class="angka">Biaya</th><th class="angka">Pendapatan</th>' +
+    '<th class="angka">Laba</th><th class="angka">Panen</th>' +
+    '<th class="angka">BEP/kg</th><th class="angka">Laba/m²</th></tr></thead><tbody>';
+  var tot = { biaya: 0, pendapatan: 0, laba: 0, kg: 0 };
+  for (var i = 0; i < petak.length; i++) {
+    var r = petak[i];
+    tot.biaya += r.biaya; tot.pendapatan += r.pendapatan;
+    tot.laba += r.laba; tot.kg += r.kg;
+    html += '<tr><td><b>' + esc(r.nama) + '</b>' +
+      (r.komoditas ? '<br><small style="color:var(--redup)">' + esc(r.komoditas) +
+        '</small>' : '') + '</td>' +
+      '<td class="angka">' + rp(r.biaya) + '</td>' +
+      '<td class="angka">' + rp(r.pendapatan) + '</td>' +
+      '<td class="angka" style="font-weight:700;color:' +
+      (r.laba >= 0 ? 'var(--sukses)' : 'var(--bahaya)') + '">' + rp(r.laba) + '</td>' +
+      '<td class="angka">' + rp(r.kg) + ' kg</td>' +
+      '<td class="angka">' + (r.bepPerKg ? rp(r.bepPerKg) : '-') + '</td>' +
+      '<td class="angka">' + (r.labaPerM2 ? rp(r.labaPerM2) : '-') + '</td></tr>';
+  }
+  html += '</tbody><tfoot><tr style="font-weight:800"><td>TOTAL</td>' +
+    '<td class="angka">' + rp(tot.biaya) + '</td>' +
+    '<td class="angka">' + rp(tot.pendapatan) + '</td>' +
+    '<td class="angka">' + rp(tot.laba) + '</td>' +
+    '<td class="angka">' + rp(tot.kg) + ' kg</td>' +
+    '<td class="angka"></td><td class="angka"></td></tr></tfoot></table></div></div>';
+  return html;
+}
+
+/* ---------- kategori biaya ---------- */
+function bagianKategoriBiaya(kategori, totalBiaya) {
+  if (!kategori.length) return '';
+  var maks = kategori[0].nominal || 1;
+  var html = '<div class="kartu"><h3>Biaya per kategori</h3>';
+  for (var i = 0; i < kategori.length; i++) {
+    var k = kategori[i];
+    html += '<div style="margin-bottom:8px">' +
+      '<div class="baris" style="font-size:.8rem">' +
+      '<span>' + esc(k.nama) + '</span>' +
+      '<b class="kanan">Rp ' + rp(k.nominal) + ' · ' + k.persen + '%</b></div>' +
+      '<div class="batang"><i style="width:' +
+      Math.round(k.nominal / maks * 100) + '%"></i></div></div>';
+  }
+  if (kategori.length > 1) {
+    html += '<p style="font-size:.8rem;color:var(--redup);margin-top:8px">' +
+      'Kategori terbesar: <b>' + esc(kategori[0].nama) + '</b> (' +
+      kategori[0].persen + '% dari total biaya). Bila angkanya jauh melampaui ' +
+      'kategori lain, periksa apakah memang begitu atau ada catatan yang salah ' +
+      'kategori.</p>';
+  }
+  return html + '</div>';
+}
+
+/* ---------- komoditas ---------- */
+function bagianKomoditas(komoditas) {
+  if (!komoditas.length) return '';
+  var html = '<div class="kartu"><h3>Panen per komoditas</h3>' +
+    '<div class="gulir"><table><thead><tr><th>Komoditas</th>' +
+    '<th class="angka">Panen</th><th class="angka">Pendapatan</th>' +
+    '<th class="angka">Harga rerata</th><th class="angka">Transaksi</th>' +
+    '</tr></thead><tbody>';
+  for (var i = 0; i < komoditas.length; i++) {
+    var k = komoditas[i];
+    html += '<tr><td><b>' + esc(k.nama) + '</b></td>' +
+      '<td class="angka">' + rp(k.kg) + ' kg</td>' +
+      '<td class="angka">' + rp(k.pendapatan) + '</td>' +
+      '<td class="angka">' + rp(k.hargaRerata) + '</td>' +
+      '<td class="angka">' + k.transaksi + '</td></tr>';
+  }
+  return html + '</tbody></table></div></div>';
+}
+
+/* ---------- kegiatan lapangan ---------- */
+function bagianKegiatan(K) {
+  var html = '<div class="kartu"><h3>Kegiatan lapangan</h3><div class="kisi kisi4">' +
+    kartuStat('🧪', K.pupuk.selesai, 'Pemupukan Selesai',
+              K.pupuk.terlewat ? K.pupuk.terlewat + ' terlewat' : 'Tidak ada terlewat') +
+    kartuStat('📋', K.aktivitas.jumlah, 'Catatan Aktivitas',
+              K.total.jamKerja + ' jam kerja') +
+    kartuStat('🐛', K.hama.laporan, 'Laporan Hama',
+              K.hama.kerugian ? 'Rugi Rp ' + rpSingkat(K.hama.kerugian)
+                : 'Tanpa kerugian tercatat') +
+    kartuStat('📦', K.stok.keluar, 'Pengeluaran Stok',
+              'Senilai Rp ' + rpSingkat(K.stok.nilaiKeluar)) +
+    '</div>';
+
+  if (K.pokok) {
+    html += '<hr class="pisah"><h4>Per pokok</h4><div class="kisi kisi3">' +
+      barisInfo('Panen tercatat per pokok', rp(K.pokok.panenKg) + ' kg dari ' +
+                K.pokok.catatanPanen + ' catatan') +
+      barisInfo('Pokok dinyatakan mati', K.pokok.mati) +
+      barisInfo('Penyulaman', K.pokok.sulam) + '</div>';
+  }
+
+  if (K.aktivitas.perJenis.length) {
+    html += '<hr class="pisah"><h4>Aktivitas menurut jenis</h4>' +
+      '<div class="gulir"><table><thead><tr><th>Jenis</th>' +
+      '<th class="angka">Jumlah</th></tr></thead><tbody>';
+    for (var i = 0; i < K.aktivitas.perJenis.length; i++) {
+      html += '<tr><td>' + esc(K.aktivitas.perJenis[i].nama) + '</td>' +
+        '<td class="angka">' + K.aktivitas.perJenis[i].jumlah + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+
+  if (K.daftarHama && K.daftarHama.length) {
+    html += '<hr class="pisah"><h4>Laporan kerusakan pada periode ini</h4>' +
+      '<div class="gulir"><table><thead><tr><th>Tanggal</th><th>Petak</th>' +
+      '<th>Gejala</th><th>Tingkat</th><th class="angka">Kerugian</th>' +
+      '</tr></thead><tbody>';
+    for (var j = 0; j < K.daftarHama.length; j++) {
+      var h = K.daftarHama[j];
+      html += '<tr><td>' + tglIndo(h.tanggal) + '</td>' +
+        '<td>' + esc(h.petak) + '</td>' +
+        '<td>' + esc(h.gejala) + '</td>' +
+        '<td>' + esc(h.tingkat) + '</td>' +
+        '<td class="angka">' + rp(h.kerugian) + '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+  }
+  return html + '</div>';
+}
+
+/* ------------------------------------------------------------
+   EKSPOR CSV
+   ------------------------------------------------------------ */
+
+function unduhLaporanCsv() {
+  if (!_laporan.data) return;
+  if (!S.daring) {
+    unduhBerkas(namaBerkasLaporan(), csvLokal(_laporan.data), 'text/csv;charset=utf-8');
+    toast('CSV disusun dari salinan lokal.', 'sukses');
+    return;
+  }
+  var d = _laporan.jenis === 'tahunan'
+    ? { jenis: 'tahunan', tahun: _laporan.tahun }
+    : { jenis: 'bulanan', tahun: _laporan.tahun, bulan: _laporan.bulan };
+  panggil('laporan_csv', d).then(function (r) {
+    unduhBerkas(r.namaBerkas, r.isi, 'text/csv;charset=utf-8');
+    toast('Berkas CSV diunduh.', 'sukses');
+  }).catch(function () {
+    /* Gagal di peladen bukan alasan untuk tidak memberi berkas apa pun:
+       laporannya sudah ada di layar, jadi CSV-nya bisa disusun di sini. */
+    unduhBerkas(namaBerkasLaporan(), csvLokal(_laporan.data), 'text/csv;charset=utf-8');
+    toast('CSV disusun dari salinan lokal.', 'sukses');
+  });
+}
+
+function namaBerkasLaporan() {
+  return 'laporan-' + (_laporan.jenis === 'tahunan'
+    ? _laporan.tahun
+    : _laporan.tahun + '-' + (_laporan.bulan < 10 ? '0' : '') + _laporan.bulan) + '.csv';
+}
+
+function barisCsvKlien(kolom) {
+  var keluar = [];
+  for (var i = 0; i < kolom.length; i++) {
+    var v = kolom[i] === null || kolom[i] === undefined ? '' : String(kolom[i]);
+    if (v.indexOf(';') >= 0 || v.indexOf('"') >= 0 || v.indexOf('\n') >= 0) {
+      v = '"' + v.replace(/"/g, '""') + '"';
+    }
+    keluar.push(v);
+  }
+  return keluar.join(';');
+}
+
+function csvLokal(L) {
+  var b = [];
+  b.push(barisCsvKlien(['Laporan', L.judul]));
+  b.push(barisCsvKlien(['Periode', L.periode.dari, 'sampai', L.periode.sampai]));
+  b.push(barisCsvKlien(['Sumber', 'salinan lokal perangkat']));
+  b.push('');
+  b.push(barisCsvKlien(['RINGKASAN']));
+  b.push(barisCsvKlien(['Pendapatan (Rp)', L.kini.total.pendapatan]));
+  b.push(barisCsvKlien(['Biaya (Rp)', L.kini.total.biaya]));
+  b.push(barisCsvKlien(['Laba (Rp)', L.kini.total.laba]));
+  b.push(barisCsvKlien(['Panen (kg)', L.kini.total.kg]));
+  b.push(barisCsvKlien(['Titik impas (Rp/kg)', L.kini.total.bepPerKg]));
+  b.push('');
+  b.push(barisCsvKlien(['RINCIAN PER PETAK']));
+  b.push(barisCsvKlien(['Petak', 'Biaya', 'Pendapatan', 'Laba', 'Panen (kg)']));
+  for (var i = 0; i < L.kini.petak.length; i++) {
+    var r = L.kini.petak[i];
+    b.push(barisCsvKlien([r.nama, r.biaya, r.pendapatan, r.laba, r.kg]));
+  }
+  return b.join('\r\n');
+}
+
+/* ============================================================
+   SALINAN RUMUS UNTUK MODE LURING
+   Sama persis dengan hitungPeriode() di Laporan.gs.
+   ============================================================ */
+
+function tglSaja(v) {
+  return String(v === null || v === undefined ? '' : v).substring(0, 10);
+}
+
+function dalamRentangLokal(t, dari, sampai) {
+  var s = tglSaja(t);
+  return s ? (s >= dari && s <= sampai) : false;
+}
+
+function rentangBulanLokal(tahun, bulan) {
+  var akhir = new Date(tahun, bulan, 0).getDate();
+  var mm = (bulan < 10 ? '0' : '') + bulan;
+  return { dari: tahun + '-' + mm + '-01',
+           sampai: tahun + '-' + mm + '-' + (akhir < 10 ? '0' : '') + akhir };
+}
+
+function hitungPeriodeLokal(dari, sampai) {
+  var total = { pendapatan: 0, biaya: 0, kg: 0, piutangBaru: 0, diterima: 0,
+                transaksiPanen: 0, catatanBiaya: 0, jamKerja: 0, luasDikerjakanM2: 0 };
+  var perPetak = {}, perKategori = {}, perKomoditas = {}, perJenis = {};
+
+  function barisPetak(id) {
+    var k = String(id || '');
+    if (!perPetak[k]) {
+      var p = k ? petakById(k) : null;
+      perPetak[k] = { petakId: k, nama: p ? p.nama : (k ? '(petak terhapus)'
+        : '(tanpa petak)'), komoditas: p ? p.komoditas : '',
+        luasM2: p ? angka(p.luasM2) : 0,
+        biaya: 0, pendapatan: 0, kg: 0, piutang: 0 };
+    }
+    return perPetak[k];
+  }
+
+  (S.data.biaya || []).forEach(function (b) {
+    if (!dalamRentangLokal(b.tanggal, dari, sampai)) return;
+    var n = angka(b.nominal);
+    total.biaya += n; total.catatanBiaya++;
+    barisPetak(b.petakId).biaya += n;
+    var kat = b.kategori || 'Lain-lain';
+    perKategori[kat] = (perKategori[kat] || 0) + n;
+  });
+
+  (S.data.panen || []).forEach(function (h) {
+    if (!dalamRentangLokal(h.tanggal, dari, sampai)) return;
+    var rpn = angka(h.totalPendapatan), kg = angka(h.jumlahKg),
+        dib = angka(h.sudahDibayar);
+    total.pendapatan += rpn; total.kg += kg; total.transaksiPanen++;
+    total.diterima += Math.min(dib, rpn);
+    total.piutangBaru += Math.max(0, rpn - dib);
+    var bp = barisPetak(h.petakId);
+    bp.pendapatan += rpn; bp.kg += kg; bp.piutang += Math.max(0, rpn - dib);
+    var kom = h.komoditas || '(tidak dicatat)';
+    if (!perKomoditas[kom]) {
+      perKomoditas[kom] = { nama: kom, kg: 0, pendapatan: 0, transaksi: 0 };
+    }
+    perKomoditas[kom].kg += kg;
+    perKomoditas[kom].pendapatan += rpn;
+    perKomoditas[kom].transaksi++;
+  });
+
+  var pupuk = { selesai: 0, tertunda: 0, terlewat: 0 };
+  (S.data.jadwal || []).forEach(function (j) {
+    if (!dalamRentangLokal(j.tanggal, dari, sampai)) return;
+    if (j.status === 'completed') pupuk.selesai++;
+    else if (j.status === 'postponed') pupuk.tertunda++;
+    else if (tglSaja(j.tanggal) < hariIni()) pupuk.terlewat++;
+  });
+
+  var hama = { laporan: 0, kerugian: 0, masihAktif: 0, tingkatBerat: 0 };
+  var daftarHama = [];
+  (S.data.kerusakan || []).forEach(function (k) {
+    if (!dalamRentangLokal(k.tanggal, dari, sampai)) return;
+    hama.laporan++;
+    hama.kerugian += angka(k.perkiraanRugiRp);
+    if (k.status === 'active') hama.masihAktif++;
+    if (k.tingkat === 'Berat' || k.tingkat === 'Kritis / Puso') hama.tingkatBerat++;
+    daftarHama.push({ tanggal: tglSaja(k.tanggal), petak: namaPetak(k.petakId),
+      gejala: k.judulGejala, tingkat: k.tingkat, status: k.status,
+      kerugian: angka(k.perkiraanRugiRp) });
+  });
+
+  var jumlahAktivitas = 0;
+  (S.data.aktivitas || []).forEach(function (a) {
+    if (!dalamRentangLokal(a.waktu, dari, sampai)) return;
+    jumlahAktivitas++;
+    total.jamKerja += angka(a.durasiMenit) / 60;
+    total.luasDikerjakanM2 += angka(a.luasM2);
+    var jn = a.jenis || 'Lain-lain';
+    perJenis[jn] = (perJenis[jn] || 0) + 1;
+  });
+
+  var stok = { masuk: 0, keluar: 0, nilaiMasuk: 0, nilaiKeluar: 0 };
+  (S.data.mutasi || []).forEach(function (m) {
+    if (!dalamRentangLokal(m.tanggal, dari, sampai)) return;
+    var it = itemById(m.itemId);
+    var nilai = Math.abs(angka(m.jumlah)) * (it ? angka(it.hargaSatuan) : 0);
+    if (angka(m.jumlah) >= 0) { stok.masuk++; stok.nilaiMasuk += nilai; }
+    else { stok.keluar++; stok.nilaiKeluar += nilai; }
+  });
+
+  total.laba = total.pendapatan - total.biaya;
+  total.marginPersen = total.pendapatan > 0
+    ? Math.round(total.laba / total.pendapatan * 1000) / 10 : 0;
+  total.bepPerKg = total.kg > 0 ? Math.round(total.biaya / total.kg) : 0;
+  total.hargaRerataPerKg = total.kg > 0
+    ? Math.round(total.pendapatan / total.kg) : 0;
+  total.jamKerja = Math.round(total.jamKerja * 10) / 10;
+
+  var petak = [];
+  for (var pk in perPetak) {
+    var r = perPetak[pk];
+    r.laba = r.pendapatan - r.biaya;
+    r.bepPerKg = r.kg > 0 ? Math.round(r.biaya / r.kg) : 0;
+    r.labaPerM2 = r.luasM2 > 0 ? Math.round(r.laba / r.luasM2) : 0;
+    petak.push(r);
+  }
+  petak.sort(function (a, b) { return b.laba - a.laba; });
+
+  var kategori = [];
+  for (var kt in perKategori) {
+    kategori.push({ nama: kt, nominal: perKategori[kt],
+      persen: total.biaya > 0
+        ? Math.round(perKategori[kt] / total.biaya * 1000) / 10 : 0 });
+  }
+  kategori.sort(function (a, b) { return b.nominal - a.nominal; });
+
+  var komoditas = [];
+  for (var km in perKomoditas) {
+    var kk = perKomoditas[km];
+    kk.hargaRerata = kk.kg > 0 ? Math.round(kk.pendapatan / kk.kg) : 0;
+    komoditas.push(kk);
+  }
+  komoditas.sort(function (a, b) { return b.pendapatan - a.pendapatan; });
+
+  var jenisAkt = [];
+  for (var ja in perJenis) jenisAkt.push({ nama: ja, jumlah: perJenis[ja] });
+  jenisAkt.sort(function (a, b) { return b.jumlah - a.jumlah; });
+
+  return {
+    dari: dari, sampai: sampai, total: total, petak: petak,
+    kategoriBiaya: kategori, komoditas: komoditas, pupuk: pupuk, hama: hama,
+    daftarHama: daftarHama.sort(function (a, b) {
+      return a.tanggal < b.tanggal ? 1 : -1;
+    }).slice(0, 20),
+    aktivitas: { jumlah: jumlahAktivitas, perJenis: jenisAkt },
+    stok: stok, pokok: null,
+    adaData: (total.catatanBiaya + total.transaksiPanen + jumlahAktivitas) > 0
+  };
+}
+
+function bandingkanLokal(kini, lalu) {
+  function selisih(a, b) {
+    var d = angka(a) - angka(b);
+    return { nilai: d,
+      persen: angka(b) !== 0 ? Math.round(d / Math.abs(angka(b)) * 1000) / 10 : null,
+      arah: d > 0 ? 'naik' : (d < 0 ? 'turun' : 'tetap') };
+  }
+  return {
+    pendapatan: selisih(kini.pendapatan, lalu.pendapatan),
+    biaya: selisih(kini.biaya, lalu.biaya),
+    laba: selisih(kini.laba, lalu.laba),
+    kg: selisih(kini.kg, lalu.kg),
+    bepPerKg: selisih(kini.bepPerKg, lalu.bepPerKg)
+  };
+}
+
+function laporanBulananLokal(tahun, bulan) {
+  var r = rentangBulanLokal(tahun, bulan);
+  var kini = hitungPeriodeLokal(r.dari, r.sampai);
+  var bl = bulan === 1 ? 12 : bulan - 1;
+  var tl = bulan === 1 ? tahun - 1 : tahun;
+  var rl = rentangBulanLokal(tl, bl);
+  var lalu = hitungPeriodeLokal(rl.dari, rl.sampai);
+
+  return {
+    jenis: 'bulanan', tahun: tahun, bulan: bulan,
+    namaBulan: BULAN_ID[bulan - 1],
+    judul: BULAN_ID[bulan - 1] + ' ' + tahun,
+    periode: r, kini: kini,
+    pembanding: { judul: BULAN_ID[bl - 1] + ' ' + tl, total: lalu.total,
+                  adaData: lalu.adaData },
+    perubahan: bandingkanLokal(kini.total, lalu.total),
+    catatan: catatanLokal(kini, lalu),
+    dibuatPada: new Date().toISOString().substring(0, 19),
+    dibuatOleh: S.pengguna ? S.pengguna.nama : ''
+  };
+}
+
+function laporanTahunanLokal(tahun) {
+  var r = { dari: tahun + '-01-01', sampai: tahun + '-12-31' };
+  var kini = hitungPeriodeLokal(r.dari, r.sampai);
+
+  var bulanan = [];
+  for (var b = 1; b <= 12; b++) {
+    var rb = rentangBulanLokal(tahun, b);
+    var hb = hitungPeriodeLokal(rb.dari, rb.sampai);
+    bulanan.push({ bulan: b, nama: BULAN_ID[b - 1],
+      singkat: BULAN_ID[b - 1].substring(0, 3),
+      pendapatan: hb.total.pendapatan, biaya: hb.total.biaya,
+      laba: hb.total.laba, kg: hb.total.kg,
+      transaksiPanen: hb.total.transaksiPanen, adaData: hb.adaData });
+  }
+
+  var lalu = hitungPeriodeLokal((tahun - 1) + '-01-01', (tahun - 1) + '-12-31');
+  var berisi = bulanan.filter(function (x) { return x.adaData; });
+  var puncakPanen = null, puncakLaba = null, terendahLaba = null;
+  if (berisi.length) {
+    puncakPanen = berisi.slice().sort(function (a, b) { return b.kg - a.kg; })[0];
+    var ul = berisi.slice().sort(function (a, b) { return b.laba - a.laba; });
+    puncakLaba = ul[0];
+    terendahLaba = ul[ul.length - 1];
+  }
+
+  var catatan = catatanLokal(kini, lalu);
+  if (berisi.length > 0 && berisi.length < 12) {
+    catatan.push({ jenis: 'info',
+      teks: 'Hanya ' + berisi.length + ' dari 12 bulan yang berisi catatan. Angka ' +
+            'tahunan menjumlahkan apa adanya, tidak memperkirakan bulan yang kosong.' });
+  }
+
+  return {
+    jenis: 'tahunan', tahun: tahun, judul: 'Tahun ' + tahun,
+    periode: r, kini: kini, bulanan: bulanan,
+    pembanding: { judul: 'Tahun ' + (tahun - 1), total: lalu.total,
+                  adaData: lalu.adaData },
+    perubahan: bandingkanLokal(kini.total, lalu.total),
+    puncakPanen: puncakPanen, puncakLaba: puncakLaba, terendahLaba: terendahLaba,
+    bulanBerisi: berisi.length, catatan: catatan,
+    dibuatPada: new Date().toISOString().substring(0, 19),
+    dibuatOleh: S.pengguna ? S.pengguna.nama : ''
+  };
+}
+
+function catatanLokal(kini, lalu) {
+  var out = [];
+  if (!kini.adaData) {
+    out.push({ jenis: 'kosong',
+      teks: 'Tidak ada catatan sama sekali pada periode ini. Angka nol di sini ' +
+            'berarti belum dicatat, bukan berarti tidak ada kegiatan.' });
+    return out;
+  }
+  if (kini.total.catatanBiaya === 0 && kini.total.transaksiPanen > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: 'Ada panen tetapi tidak ada catatan biaya sama sekali. Angka laba dan ' +
+            'titik impas pada laporan ini terlalu bagus, karena biayanya belum masuk.' });
+  }
+  if (kini.total.transaksiPanen === 0 && kini.total.catatanBiaya > 0) {
+    out.push({ jenis: 'info',
+      teks: 'Belum ada panen pada periode ini, jadi seluruh biaya tampak sebagai ' +
+            'kerugian. Ini wajar pada masa tanam dan pemeliharaan.' });
+  }
+  if (kini.total.piutangBaru > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: 'Piutang baru Rp ' + rp(kini.total.piutangBaru) + ' belum dibayar ' +
+            'pembeli. Angka laba di atas sudah menghitungnya sebagai pendapatan, ' +
+            'padahal uangnya belum diterima.' });
+  }
+  if (kini.pupuk.terlewat > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: kini.pupuk.terlewat + ' jadwal pemupukan terlewat pada periode ini.' });
+  }
+  if (kini.hama.tingkatBerat > 0) {
+    out.push({ jenis: 'peringatan',
+      teks: kini.hama.tingkatBerat + ' laporan kerusakan tingkat berat atau kritis.' });
+  }
+  return out;
 }
 
 </script>
